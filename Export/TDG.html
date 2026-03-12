@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>TDG Shipping Document</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="page" id="tdgForm">
+      <!-- 顶部信息行 -->
+      <section class="topline">
+        <div class="topline__left">
+          <div class="small">
+            ERAP 2-0821 AND 24 HOUR NUMBER:
+            <span data-key="erapPhone">800-363-0042</span>
+          </div>
+        </div>
+        <div class="topline__right">
+          <div class="small">
+            PAGE <span data-key="pageNo">1</span> OF
+            <span data-key="pageTotal">1</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 标题 -->
+      <section class="titlebar">
+        <div class="titlebar__left">
+          <div class="label">Consignor:</div>
+          <div class="value value--box" data-key="consignorName">
+            Linde Canada Inc.
+          </div>
+        </div>
+
+        <div class="titlebar__center">
+          <div class="title">
+            Transportation of Dangerous Goods Shipping Document
+          </div>
+        </div>
+
+        <div class="titlebar__right">
+          <div class="checkline">
+            <span class="checklabel">CHECK LOADED</span>
+            <span
+              class="checkbox"
+              data-check="checkLoaded"
+              aria-label="check loaded"
+            ></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 产品/描述区 -->
+      <section class="productBlock">
+        <div class="productBlock__left">
+          <div class="subhead">PRODUCT</div>
+          <div class="productList">
+            <label class="checkrow">
+              <span class="checkbox" data-check="productOxygen"></span>
+              <span class="text"
+                >UN1073, OXYGEN, REFRIGERATED LIQUID, 2.2(5.1)</span
+              >
+            </label>
+            <label class="checkrow">
+              <span class="checkbox" data-check="productNitrogen"></span>
+              <span class="text"
+                >UN1977, NITROGEN, REFRIGERATED LIQUID, 2.2</span
+              >
+            </label>
+            <label class="checkrow">
+              <span class="checkbox" data-check="productArgon"></span>
+              <span class="text">UN1951, ARGON, REFRIGERATED LIQUID, 2.2</span>
+            </label>
+            <label class="checkrow">
+              <span class="checkbox" data-check="productCO2"></span>
+              <span class="text"
+                >UN2187, CARBON DIOXIDE, REFRIGERATED LIQUID, 2.2</span
+              >
+            </label>
+          </div>
+        </div>
+
+        <div class="productBlock__right">
+          <div class="subhead">CHECK:</div>
+          <div class="unitRow">
+            <label class="checkrow">
+              <span class="checkbox" data-check="unitKG"></span>
+              <span class="text">KG</span>
+            </label>
+            <label class="checkrow">
+              <span class="checkbox" data-check="unitM3"></span>
+              <span class="text">m³</span>
+            </label>
+          </div>
+
+          <div class="metaGrid">
+            <div class="metaField">
+              <div class="metaLabel">TDG START</div>
+              <div class="metaValue value--box" data-key="tdgStart"></div>
+            </div>
+            <div class="metaField">
+              <div class="metaLabel">VOLUME</div>
+              <div class="metaValue value--box" data-key="volume"></div>
+            </div>
+            <div class="metaField">
+              <div class="metaLabel">SHIFT TIME</div>
+              <div class="metaValue value--box" data-key="shiftTime"></div>
+            </div>
+          </div>
+
+          <div class="metaGrid metaGrid--2">
+            <div class="metaField">
+              <div class="metaLabel">START</div>
+              <div class="metaValue value--box" data-key="shiftStart"></div>
+            </div>
+            <div class="metaField">
+              <div class="metaLabel">FINISH</div>
+              <div class="metaValue value--box" data-key="shiftFinish"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 主表格 -->
+      <section class="tableWrap">
+        <table class="tdgTable" aria-label="TDG Table">
+          <thead>
+            <tr>
+              <th class="w-cust" rowspan="2">CUSTOMER/LOCATION OR ACTIVITY</th>
+              <th class="w-acct" rowspan="2">ACCOUNT<br />NUMBER</th>
+              <th class="w-size" rowspan="2">SIZE</th>
+              <th class="w-press" colspan="2">PRESSURE</th>
+              <th class="w-tank" colspan="2">CUST TANK LEVEL</th>
+              <th class="w-del" colspan="2">START / FIN</th>
+              <th class="w-deliv" rowspan="2">DELIVERED</th>
+              <th class="w-bal" rowspan="2">BALANCE</th>
+              <th class="w-arr" rowspan="2">ARRIVE</th>
+            </tr>
+            <tr>
+              <th class="w-press">START</th>
+              <th class="w-press">FIN</th>
+              <th class="w-tank">START</th>
+              <th class="w-tank">FIN</th>
+              <th class="w-del">START</th>
+              <th class="w-del">FIN</th>
+            </tr>
+          </thead>
+          <tbody id="tdgBody">
+            <!-- JS will generate rows -->
+          </tbody>
+        </table>
+      </section>
+
+      <!-- 底部声明 -->
+      <section class="footerBlock">
+        <div class="declare">
+          I hereby declare that the contents of this consignment are fully and
+          accurately described above by the proper shipping name, are properly
+          classified and packaged, have dangerous goods safety marks properly
+          affixed or displayed on them, and are in all respects in proper
+          condition for transport according to the Transportation of Dangerous
+          Goods Regulations.
+        </div>
+
+        <div class="signRow">
+          <div class="signField">
+            <div class="signLabel">Consignor: Signature:</div>
+            <div class="signBox" data-key="consignorSignature"></div>
+            <div class="hint">(print employee name)</div>
+            <div class="signBox" data-key="consignorPrintName"></div>
+          </div>
+
+          <div class="signField signField--right">
+            <div class="miniGrid">
+              <div class="miniItem">
+                <div class="miniLabel">Date:</div>
+                <div class="miniBox" data-key="date"></div>
+              </div>
+              <div class="miniItem">
+                <div class="miniLabel">Vehicle No:</div>
+                <div class="miniBox" data-key="vehicleNo"></div>
+              </div>
+              <div class="miniItem">
+                <div class="miniLabel">Start km:</div>
+                <div class="miniBox" data-key="startKm"></div>
+              </div>
+              <div class="miniItem">
+                <div class="miniLabel">End km:</div>
+                <div class="miniBox" data-key="endKm"></div>
+              </div>
+              <div class="miniItem">
+                <div class="miniLabel">Total km:</div>
+                <div class="miniBox" data-key="totalKm"></div>
+              </div>
+              <div class="miniItem">
+                <div class="miniLabel">rev</div>
+                <div class="miniBox" data-key="rev">Jan27, 2021</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="emergency">
+          In the U.S. Call CHEMTREC at 1-800-424-9300 for emergency response
+          instructions.<br />
+          In a transportation incident or any product leakage, move and keep
+          people away, stay upwind, avoid all contact with spilled material.
+        </div>
+      </section>
+    </main>
+
+    <section class="actions noprint">
+      <button id="btnDemo">填入示例数据</button>
+      <button id="btnClear">清空</button>
+      <button onclick="window.print()">打印</button>
+    </section>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
