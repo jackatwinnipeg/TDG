@@ -1,0 +1,714 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0b1020" />
+    <link rel="stylesheet" href="./css/style.css" />
+    <title>TDG Log - History Detail</title>
+
+    <style>
+      table {
+        width: 100%;
+        table-layout: fixed;
+      }
+
+      table th,
+      table td {
+        width: 25%;
+        text-align: center;
+      }
+
+      .topbar {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        margin: 16px 0;
+      }
+
+      td:last-child {
+        text-align: left;
+        padding-left: 12px;
+      }
+
+      .topbar .left,
+      .topbar .right {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      .kpis {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+
+      .kpi {
+        padding: 10px 12px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.03);
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+      }
+
+      .kpi .v {
+        font-size: 18px;
+        font-weight: 800;
+        word-break: break-word;
+      }
+
+      @media (max-width: 1100px) {
+        .kpis {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 700px) {
+        .kpis {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 480px) {
+        .kpis {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .grid2 {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      @media (max-width: 900px) {
+        .grid2 {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .detail-card {
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.03);
+        overflow: hidden;
+      }
+
+      .detail-card .hd2 {
+        padding: 10px 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        font-weight: 700;
+      }
+
+      .detail-card .bd2 {
+        padding: 12px;
+      }
+
+      .kv-grid {
+        display: grid;
+        grid-template-columns: 150px 1fr;
+        gap: 10px 12px;
+      }
+
+      @media (max-width: 640px) {
+        .kv-grid {
+          grid-template-columns: 1fr;
+          gap: 6px;
+        }
+      }
+
+      .label2 {
+        opacity: 0.78;
+        font-size: 13px;
+      }
+
+      .value2 {
+        font-weight: 700;
+        word-break: break-word;
+      }
+
+      .muted {
+        opacity: 0.75;
+      }
+
+      .mono {
+        font-family:
+          ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", "Courier New", monospace;
+      }
+
+      .empty {
+        padding: 28px 18px;
+        text-align: center;
+        border-radius: 14px;
+        border: 1px dashed rgba(255, 255, 255, 0.14);
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      .table-wrap {
+        overflow: auto;
+        margin-top: 12px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      th,
+      td {
+        padding: 10px 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        vertical-align: top;
+      }
+
+      th {
+        text-align: center;
+        font-size: 12px;
+        opacity: 0.8;
+        background: rgba(11, 16, 32, 0.95);
+      }
+
+      .notes-box {
+        white-space: pre-wrap;
+      }
+
+      .pager {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        justify-content: flex-end;
+        margin-top: 10px;
+        flex-wrap: wrap;
+      }
+
+      .pager .spacer {
+        margin-right: auto;
+      }
+
+      .chip {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.04);
+        font-size: 12px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="container">
+      <header class="topbar">
+        <div class="left">
+          <div class="tag">History Detail</div>
+          <div class="muted" id="who"></div>
+        </div>
+
+        <div class="right">
+          <button class="btn secondary" id="btnBack" type="button">
+            ← Back to History
+          </button>
+          <button class="btn secondary" id="btnExport" type="button">
+            Fill Log
+          </button>
+          <button class="btn secondary" id="btnLogout" type="button">
+            Logout
+          </button>
+        </div>
+      </header>
+
+      <main class="card">
+        <div class="bd">
+          <div id="emptyState" class="empty" style="display: none">
+            <div style="font-size: 18px; font-weight: 800; margin-bottom: 8px">
+              No history record selected
+            </div>
+            <div class="muted">请从 History 页面点击某一条记录进入详情页。</div>
+          </div>
+
+          <div id="detailWrap" style="display: none">
+            <div class="kpis">
+              <div class="kpi">
+                <div class="muted">Date</div>
+                <div class="v" id="kpiDate">—</div>
+              </div>
+
+              <div class="kpi">
+                <div class="muted">Driver Name</div>
+                <div class="v" id="kpiDriverName">—</div>
+              </div>
+
+              <div class="kpi">
+                <div class="muted">Vehicle Number</div>
+                <div class="v" id="kpiVehicleNo">—</div>
+              </div>
+
+              <div class="kpi">
+                <div class="muted">Delivered (Lbs)</div>
+                <div class="v" id="kpiDelivered">0</div>
+              </div>
+
+              <div class="kpi">
+                <div class="muted">Arrival Time</div>
+                <div class="v" id="kpiArrival">—</div>
+              </div>
+            </div>
+
+            <div class="grid2">
+              <section class="detail-card">
+                <div class="hd2">Account / Location</div>
+                <div class="bd2">
+                  <div class="kv-grid">
+                    <div class="label2">Account Number</div>
+                    <div class="value2 mono" id="vAccountNumber"></div>
+
+                    <div class="label2">Account Name</div>
+                    <div class="value2" id="vAccountName"></div>
+
+                    <div class="label2">Address</div>
+                    <div class="value2" id="vAccountAddress"></div>
+
+                    <div class="label2">City</div>
+                    <div class="value2" id="vAccountCity"></div>
+
+                    <div class="label2">Route</div>
+                    <div class="value2" id="vAccountRoute"></div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="detail-card">
+                <div class="hd2">Driver / Vehicle</div>
+                <div class="bd2">
+                  <div class="kv-grid">
+                    <div class="label2">Driver Number</div>
+                    <div class="value2 mono" id="vDriverNumber"></div>
+
+                    <div class="label2">Driver Name</div>
+                    <div class="value2" id="vDriverName"></div>
+
+                    <div class="label2">Vehicle No</div>
+                    <div class="value2" id="vVehicleNo"></div>
+
+                    <div class="label2">Arrival Time</div>
+                    <div class="value2" id="vArrivalTime"></div>
+
+                    <div class="label2">Notes</div>
+                    <div class="value2 notes-box" id="vDriverNotes"></div>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Driver</th>
+                    <th>Delivered</th>
+                    <th>Notes</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody">
+                  <tr>
+                    <td colspan="4" class="muted">No related records.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="pager">
+              <span class="muted spacer" id="pagerInfo"></span>
+              <button class="btn secondary" id="btnPrev" type="button">
+                Prev
+              </button>
+              <span class="chip" id="pageChip">Page 1/1</span>
+              <button class="btn secondary" id="btnNext" type="button">
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="./js/supabaseConfig.js"></script>
+    <script src="./js/supabaseClient.js"></script>
+    <script src="./js/auth_supabase.js"></script>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+
+      const LS_RECORDS = "tdg_records_v3";
+      const LS_HISTORY_VIEW = "tdg_history_view_v1";
+      const LS_HISTORY_VIEW_INDEX = "tdg_history_view_index_v1";
+      const LS_FILL_LOG_RECORD = "tdg_fill_log_record_v1";
+
+      const PAGE_SIZE = 5;
+      let relatedPage = 1;
+      let relatedRows = [];
+
+      function safe(v) {
+        return String(v ?? "").trim();
+      }
+
+      function escapeHtml(s) {
+        return String(s ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function num(v) {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : 0;
+      }
+
+      function toLocalDateObj(v) {
+        if (!v) return null;
+        if (v instanceof Date && !Number.isNaN(v.getTime())) return v;
+
+        const s = String(v).trim();
+        if (!s) return null;
+        if (/^\d{1,2}:\d{2}$/.test(s)) return null;
+
+        const d = new Date(s);
+        return Number.isNaN(d.getTime()) ? null : d;
+      }
+
+      function formatLocalTime(v) {
+        const s = String(v ?? "").trim();
+        if (!s) return "—";
+
+        if (/^\d{1,2}:\d{2}$/.test(s)) {
+          const [h, m] = s.split(":");
+          return `${String(h).padStart(2, "0")}:${m}`;
+        }
+
+        const d = toLocalDateObj(s);
+        if (!d) return s || "—";
+
+        return `${String(d.getHours()).padStart(2, "0")}:${String(
+          d.getMinutes(),
+        ).padStart(2, "0")}`;
+      }
+
+      function formatLocalDate(v) {
+        const d = toLocalDateObj(v);
+        if (!d) return "—";
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      }
+
+      function formatLocalDateTime(v) {
+        const d = toLocalDateObj(v);
+        if (!d) return "—";
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, "0");
+        const dd = String(d.getDate()).padStart(2, "0");
+        const hh = String(d.getHours()).padStart(2, "0");
+        const mi = String(d.getMinutes()).padStart(2, "0");
+        return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+      }
+
+      function fmt(v) {
+        if (v == null || v === "") return "—";
+        return String(v);
+      }
+
+      function loadRecords() {
+        try {
+          const raw = localStorage.getItem(LS_RECORDS) || "[]";
+          const arr = JSON.parse(raw);
+          return Array.isArray(arr) ? arr : [];
+        } catch {
+          return [];
+        }
+      }
+
+      function loadSelectedRecord() {
+        try {
+          const raw = localStorage.getItem(LS_HISTORY_VIEW);
+          if (raw) {
+            const obj = JSON.parse(raw);
+            if (obj && typeof obj === "object") return obj;
+          }
+        } catch {}
+
+        try {
+          const idxRaw = localStorage.getItem(LS_HISTORY_VIEW_INDEX);
+          if (idxRaw != null && idxRaw !== "") {
+            const list = loadRecords();
+            const idx = Number(idxRaw);
+            if (Number.isInteger(idx) && idx >= 0 && idx < list.length) {
+              return list[idx];
+            }
+          }
+        } catch {}
+
+        return null;
+      }
+
+      function isClockOnly(v) {
+        return /^\d{1,2}:\d{2}$/.test(String(v ?? "").trim());
+      }
+
+      function getArrivalClockValue(r) {
+        return safe(r.arrivalTime || r.arriveTime || r.arrivedAt || "");
+      }
+
+      function getArrivalDateSource(r) {
+        const arrivalClock = getArrivalClockValue(r);
+
+        if (!isClockOnly(arrivalClock)) {
+          const parsedArrival = toLocalDateObj(arrivalClock);
+          if (parsedArrival) return arrivalClock;
+        }
+
+        const datetimeFallback =
+          safe(r.arrivedAt) ||
+          safe(r.completedAt) ||
+          safe(r.updatedAt) ||
+          safe(r.createdAt) ||
+          "";
+
+        if (datetimeFallback && toLocalDateObj(datetimeFallback)) {
+          return datetimeFallback;
+        }
+
+        return safe(r.date || "");
+      }
+
+      function getArrivalBaseTime(r) {
+        const dateSource = getArrivalDateSource(r);
+        const timeSource = getArrivalClockValue(r);
+
+        if (
+          dateSource &&
+          toLocalDateObj(dateSource) &&
+          isClockOnly(timeSource)
+        ) {
+          const dateText = formatLocalDate(dateSource);
+          const timeText = formatLocalTime(timeSource);
+          return dateText !== "—" && timeText !== "—"
+            ? `${dateText} ${timeText}`
+            : dateSource;
+        }
+
+        return dateSource || timeSource || "";
+      }
+
+      function getArrivalDateText(r) {
+        const dateSource = getArrivalDateSource(r);
+        const arrivalDate = formatLocalDate(dateSource);
+        return arrivalDate !== "—" ? arrivalDate : "—";
+      }
+
+      function getArrivalTimeText(r) {
+        const timeSource = getArrivalClockValue(r);
+        const arrivalTime = formatLocalTime(timeSource);
+        if (arrivalTime !== "—") return arrivalTime;
+
+        const baseTime = getArrivalBaseTime(r);
+        const fallbackTime = formatLocalTime(baseTime);
+        return fallbackTime !== "—" ? fallbackTime : "—";
+      }
+
+      function getDisplayDateTime(r) {
+        const baseTime = getArrivalBaseTime(r);
+        const parsed = toLocalDateObj(baseTime);
+        if (parsed) return formatLocalDateTime(baseTime);
+
+        const datePart = getArrivalDateText(r);
+        const timePart = getArrivalTimeText(r);
+
+        if (datePart !== "—" && timePart !== "—")
+          return `${datePart} ${timePart}`;
+        if (datePart !== "—") return datePart;
+        if (timePart !== "—") return timePart;
+        return "—";
+      }
+
+      function getSortKey(r) {
+        const baseTime = getArrivalBaseTime(r);
+        const parsed = toLocalDateObj(baseTime);
+        if (parsed) return parsed.getTime();
+
+        const dateText = getArrivalDateText(r);
+        const timeText = getArrivalTimeText(r);
+
+        if (dateText !== "—") {
+          const combined = `${dateText} ${timeText !== "—" ? timeText : "00:00"}`;
+          const cd = new Date(combined);
+          if (!Number.isNaN(cd.getTime())) return cd.getTime();
+        }
+
+        const fallback = toLocalDateObj(
+          r.arrivedAt ||
+            r.completedAt ||
+            r.updatedAt ||
+            r.createdAt ||
+            r.date ||
+            "",
+        );
+        return fallback ? fallback.getTime() : 0;
+      }
+
+      function getRelatedRecordsByAccount(accountNumber) {
+        const acct = safe(accountNumber);
+        if (!acct) return [];
+
+        return loadRecords()
+          .filter((r) => safe(r.accountNumber) === acct)
+          .sort((a, b) => getSortKey(b) - getSortKey(a));
+      }
+
+      function renderRelatedTable() {
+        const tbody = $("tbody");
+        const total = relatedRows.length;
+        const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+        relatedPage = Math.min(Math.max(1, relatedPage), totalPages);
+
+        const start = (relatedPage - 1) * PAGE_SIZE;
+        const items = relatedRows.slice(start, start + PAGE_SIZE);
+
+        $("pageChip").textContent = `Page ${relatedPage}/${totalPages}`;
+        $("pagerInfo").textContent = total
+          ? `Showing ${start + 1}-${Math.min(start + PAGE_SIZE, total)} of ${total}`
+          : "No related records";
+
+        $("btnPrev").disabled = relatedPage === 1;
+        $("btnNext").disabled = relatedPage === totalPages;
+
+        if (!items.length) {
+          tbody.innerHTML =
+            '<tr><td colspan="4" class="muted">No related records.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = items
+          .map((r) => {
+            const timeText = getDisplayDateTime(r);
+            const driverName = safe(
+              r.driverName || r.displayName || r.driver || "",
+            );
+            const delivered = num(r.deliveredVolume ?? r.delivered ?? 0);
+            const notes = safe(r.notes || r.note || "");
+
+            return `
+              <tr>
+                <td>${escapeHtml(timeText)}</td>
+                <td>${escapeHtml(driverName || "—")}</td>
+                <td>${escapeHtml(String(delivered))}</td>
+                <td>${escapeHtml(notes || "—")}</td>
+              </tr>
+            `;
+          })
+          .join("");
+      }
+
+      function renderEmpty() {
+        $("emptyState").style.display = "";
+        $("detailWrap").style.display = "none";
+      }
+
+      function renderRecord(r) {
+        $("emptyState").style.display = "none";
+        $("detailWrap").style.display = "";
+
+        const delivered = num(r.deliveredVolume ?? r.delivered ?? 0);
+        const notes = safe(r.notes || r.note || "");
+        const arrivalDateText = getArrivalDateText(r);
+        const arrivalTimeText = getArrivalTimeText(r);
+
+        $("kpiDate").textContent = arrivalDateText;
+        $("kpiDriverName").textContent = fmt(r.driverName);
+        $("kpiVehicleNo").textContent = fmt(r.vehicleNo);
+        $("kpiDelivered").textContent = String(delivered);
+        $("kpiArrival").textContent = arrivalTimeText;
+
+        $("vAccountNumber").textContent = fmt(r.accountNumber);
+        $("vAccountName").textContent = fmt(r.accountName);
+        $("vAccountAddress").textContent = fmt(r.accountAddress);
+        $("vAccountCity").textContent = fmt(r.accountCity);
+        $("vAccountRoute").textContent = fmt(r.accountRoute);
+
+        $("vDriverNumber").textContent = fmt(r.driverNumber);
+        $("vDriverName").textContent = fmt(r.driverName);
+        $("vVehicleNo").textContent = fmt(r.vehicleNo);
+        $("vArrivalTime").textContent = arrivalTimeText;
+        $("vDriverNotes").textContent = notes || "—";
+
+        relatedRows = getRelatedRecordsByAccount(r.accountNumber);
+        relatedPage = 1;
+        renderRelatedTable();
+      }
+
+      function openFillLog(r) {
+        localStorage.setItem(LS_FILL_LOG_RECORD, JSON.stringify(r));
+        window.open("./fill_log.html", "_blank");
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        const sess = window.TDG_AUTH?.requireAuth?.();
+        if (!sess) return;
+
+        $("who").textContent =
+          `当前登录：${sess.displayName || sess.username}（${sess.role}）`;
+
+        const record = loadSelectedRecord();
+        if (!record) {
+          renderEmpty();
+        } else {
+          renderRecord(record);
+          $("btnExport").addEventListener("click", () => openFillLog(record));
+        }
+
+        $("btnPrev").addEventListener("click", () => {
+          relatedPage = Math.max(1, relatedPage - 1);
+          renderRelatedTable();
+        });
+
+        $("btnNext").addEventListener("click", () => {
+          const totalPages = Math.max(
+            1,
+            Math.ceil(relatedRows.length / PAGE_SIZE),
+          );
+          relatedPage = Math.min(totalPages, relatedPage + 1);
+          renderRelatedTable();
+        });
+
+        $("btnBack").addEventListener("click", () => {
+          if (
+            document.referrer &&
+            document.referrer.toLowerCase().includes("history_record")
+          ) {
+            history.back();
+            return;
+          }
+          window.location.href = "./History_Record.html";
+        });
+
+        $("btnLogout").addEventListener("click", () =>
+          window.TDG_AUTH?.logout?.(),
+        );
+      });
+    </script>
+  </body>
+</html>

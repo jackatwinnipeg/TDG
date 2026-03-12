@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>CO2 Fill Log</title>
+
+    <style>
+      :root {
+        --ink: #111;
+        --line: #111;
+        --bg: #eceff3;
+        --paper: #fff;
+        --muted: #666;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        padding: 24px;
+        font-family: Arial, Helvetica, sans-serif;
+        background: var(--bg);
+        color: var(--ink);
+      }
+
+      /* 打印纸 */
+      @page {
+        size: Letter;
+        margin: 0.5in;
+      }
+
+      .sheet {
+        width: 8.5in;
+        height: 10in;
+        margin: auto;
+
+        background: var(--paper);
+
+        border: 1.5px solid var(--line);
+
+        padding: 0.35in 0.4in;
+
+        overflow: hidden;
+      }
+
+      /* 标题 */
+
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+
+        border-bottom: 2px solid var(--line);
+
+        padding-bottom: 8px;
+        margin-bottom: 10px;
+      }
+
+      .header h1 {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 700;
+      }
+
+      .header-meta {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      /* 表头区域 */
+
+      .profile-box {
+        margin-bottom: 10px;
+      }
+
+      .profile-table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+      }
+
+      .profile-table td {
+        border: 1px solid #111;
+        vertical-align: top;
+        padding: 2px 4px;
+        height: 38px;
+      }
+
+      .profile-table .cell-left {
+        width: 81%;
+      }
+
+      .profile-table .cell-right {
+        width: 19%;
+      }
+
+      .cell-label {
+        font-size: 12px;
+        line-height: 1;
+        margin-bottom: 3px;
+        text-align: left; /* 修复标签文字被居中对齐的问题 */
+      }
+
+      .cell-input {
+        width: 100%;
+        border: none;
+        outline: none;
+        background: transparent;
+        font-size: 12px;
+        line-height: 1.2;
+        padding: 0;
+        margin: 0;
+        color: #111;
+        text-align: center; /* 默认居中对齐输入内容 */
+        font-weight: 700;
+      }
+
+      .cell-input[readonly] {
+        cursor: default;
+      }
+
+      /* 表格 */
+
+      .section-title {
+        font-size: 12px;
+        font-weight: 700;
+
+        border-bottom: 1.5px solid var(--line);
+
+        margin: 10px 0 6px;
+        padding-bottom: 3px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        border: 1px solid var(--line);
+
+        height: 28px;
+
+        padding: 4px 6px;
+
+        font-size: 12px;
+
+        text-align: center;
+        vertical-align: middle;
+      }
+
+      th {
+        background: #f3f3f3;
+        font-weight: 700;
+      }
+
+      /* 按钮 */
+
+      .actions {
+        width: 8.5in;
+        margin: 14px auto 0;
+
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+      }
+
+      .btn {
+        border: 1px solid #111;
+        background: #111;
+        color: #fff;
+
+        padding: 8px 14px;
+        font-size: 14px;
+
+        cursor: pointer;
+      }
+
+      .btn.secondary {
+        background: #fff;
+        color: #111;
+      }
+
+      /* 打印 */
+
+      @media print {
+        body {
+          padding: 0;
+          background: #fff;
+        }
+
+        .sheet {
+          width: 7.5in;
+          height: 10in;
+          margin: 0.5in;
+        }
+
+        .actions {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="sheet">
+      <header class="header">
+        <h1>Fill Log CO₂</h1>
+
+        <div class="header-meta">Linde Canada Inc.</div>
+      </header>
+
+      <section class="profile-box">
+        <table class="profile-table">
+          <tr>
+            <td class="cell-left">
+              <div class="cell-label">Account Name：</div>
+              <input class="cell-input" id="accountName" readonly />
+            </td>
+            <td class="cell-right">
+              <div class="cell-label">Tank Size SF/BD：</div>
+              <input class="cell-input" id="tankSize" />
+            </td>
+          </tr>
+
+          <tr>
+            <td class="cell-left">
+              <div class="cell-label">Address：</div>
+              <input class="cell-input" id="address" readonly />
+            </td>
+            <td class="cell-right">
+              <div class="cell-label">Account Number：</div>
+              <input class="cell-input" id="accountNumber" readonly />
+            </td>
+          </tr>
+
+          <tr>
+            <td class="cell-left">
+              <div class="cell-label">Fill box location:</div>
+              <input class="cell-input" id="fillBoxLocation" />
+            </td>
+            <td class="cell-right">
+              <div class="cell-label">Gas Part Number:</div>
+              <input class="cell-input" id="gasPartNumber" value="CD BEVBULK" />
+            </td>
+          </tr>
+        </table>
+      </section>
+
+      <div class="section-title">Fill Log Records</div>
+
+      <table id="logTable">
+        <thead>
+          <tr>
+            <th style="width: 25%">Date</th>
+
+            <th style="width: 25%">Amount</th>
+
+            <th style="width: 50%">Notes</th>
+          </tr>
+        </thead>
+
+        <tbody id="logBody"></tbody>
+      </table>
+    </div>
+
+    <div class="actions">
+      <button class="btn secondary" id="saveBtn">Save</button>
+
+      <button class="btn" onclick="window.print()">Print</button>
+    </div>
+
+    <script>
+      const LS_RECORDS = "tdg_records_v3";
+      const LS_FILL = "tdg_fill_log_record_v1";
+
+      function $(id) {
+        return document.getElementById(id);
+      }
+
+      function safe(v) {
+        return String(v ?? "").trim();
+      }
+
+      function readCurrent() {
+        try {
+          return JSON.parse(localStorage.getItem(LS_FILL));
+        } catch {
+          return null;
+        }
+      }
+
+      function loadRecords() {
+        try {
+          return JSON.parse(localStorage.getItem(LS_RECORDS) || "[]");
+        } catch {
+          return [];
+        }
+      }
+
+      function toDateValue(v) {
+        if (!v) return null;
+        const d = new Date(v);
+        return Number.isNaN(d.getTime()) ? null : d;
+      }
+
+      function formatDate(v) {
+        if (!v) return "";
+        const s = String(v).trim();
+        if (!s) return "";
+
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+        const d = toDateValue(s);
+        if (!d) return s;
+
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, "0");
+        const dd = String(d.getDate()).padStart(2, "0");
+        return `${yyyy}-${mm}-${dd}`;
+      }
+
+      function getSortTime(rec) {
+        const d =
+          toDateValue(rec.createdAt) ||
+          toDateValue(rec.updatedAt) ||
+          toDateValue(rec.completedAt) ||
+          toDateValue(rec.arrivedAt) ||
+          toDateValue(rec.date);
+
+        return d ? d.getTime() : 0;
+      }
+
+      function getDisplayDate(rec) {
+        return formatDate(
+          rec.date ??
+            rec.completedAt ??
+            rec.arrivedAt ??
+            rec.createdAt ??
+            rec.updatedAt ??
+            "",
+        );
+      }
+
+      function fillHeader(r) {
+        $("accountName").value = safe(r.accountName);
+        $("accountNumber").value = safe(r.accountNumber);
+
+        const addr = [r.accountAddress, r.accountCity]
+          .filter(Boolean)
+          .join(", ");
+        $("address").value = addr;
+      }
+
+      function createRow(date, amount, notes) {
+        const tr = document.createElement("tr");
+
+        tr.innerHTML = `<td>${date ?? ""}</td>
+<td>${amount ?? ""}</td>
+<td>${notes ?? ""}</td>`;
+
+        return tr;
+      }
+
+      function fillTable(r) {
+        const rows = loadRecords()
+          .filter((x) => safe(x.accountNumber) === safe(r.accountNumber))
+          .sort((a, b) => getSortTime(b) - getSortTime(a));
+
+        const tbody = $("logBody");
+        tbody.innerHTML = "";
+
+        const maxRows = 14;
+
+        for (let i = 0; i < Math.min(rows.length, maxRows); i++) {
+          const rec = rows[i];
+
+          tbody.appendChild(
+            createRow(
+              getDisplayDate(rec),
+              rec.delivered ?? rec.deliveredVolume ?? "",
+              rec.notes ?? "",
+            ),
+          );
+        }
+
+        for (let i = rows.length; i < maxRows; i++) {
+          tbody.appendChild(createRow("", "", ""));
+        }
+      }
+
+      function init() {
+        const r = readCurrent();
+        if (!r) return;
+
+        fillHeader(r);
+        fillTable(r);
+      }
+
+      window.addEventListener("load", init);
+    </script>
+  </body>
+</html>
