@@ -12,18 +12,12 @@
   "use strict";
   console.log("admin.js loaded");
 
-  // =========================
-  // DOM helpers
-  // =========================
   const $ = (id) => document.getElementById(id);
   const on = (el, ev, fn, opts) => el && el.addEventListener(ev, fn, opts);
   const safe = (v) => String(v ?? "").trim();
   const lower = (v) => safe(v).toLowerCase();
   const nowIso = () => new Date().toISOString();
 
-  // =========================
-  // Basic XSS-safe escaping
-  // =========================
   const escapeHtml = (s) =>
     String(s ?? "")
       .replaceAll("&", "&amp;")
@@ -32,9 +26,6 @@
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#039;");
 
-  // =========================
-  // Auth guard
-  // =========================
   const sess = window.TDG_AUTH?.requireAuth?.({ roles: ["admin"] });
   if (!sess) return;
 
@@ -43,9 +34,6 @@
   }
   on($("btnLogout"), "click", () => window.TDG_AUTH.logout());
 
-  // =========================
-  // Supabase helpers
-  // =========================
   function getSb() {
     const sb = window.supabaseClient;
     if (!sb?.from || !sb?.auth) {
@@ -93,10 +81,10 @@
         throw new Error(`Edge Function ${name} 不存在或未部署`);
       }
       if (status === 401) {
-        throw new Error("登录已失效或没有权限，请重新登录");
+        throw new Error(msg || "登录已失效，请重新登录");
       }
       if (status === 403) {
-        throw new Error("没有权限执行此操作");
+        throw new Error(msg || "没有权限执行此操作");
       }
 
       throw new Error(msg || `Edge Function ${name} 调用失败`);
@@ -131,7 +119,7 @@
 
     if (!res.ok) {
       if (res.status === 401) {
-        throw new Error("登录已失效或没有权限，请重新登录");
+        throw new Error(json?.error || "登录已失效，请重新登录");
       }
       if (res.status === 403) {
         throw new Error(json?.error || "没有权限执行此操作");
@@ -148,7 +136,7 @@
   function showApiError(err, fallback = "操作失败") {
     const msg = String(err?.message || fallback);
 
-    if (msg.includes("重新登录") || msg.includes("登录已失效")) {
+    if (msg.includes("重新登录") || msg.includes("登录已失效") || msg.includes("Invalid session")) {
       alert(msg);
       window.location.href = "./login.html";
       return;
@@ -157,18 +145,12 @@
     alert(msg || fallback);
   }
 
-  // =========================
-  // Edge Function names
-  // =========================
   const FN = {
     createUser: "admin-create-user",
     updateUser: "admin-update-user",
     deleteUser: "admin-delete-user",
   };
 
-  // =========================
-  // Modal
-  // =========================
   function openModal(title, bodyHtml, { onClose } = {}) {
     const titleEl = $("modalTitle");
     const bodyEl = $("modalBody");
@@ -209,9 +191,6 @@
     return { close };
   }
 
-  // =========================
-  // Validation / normalization
-  // =========================
   const Rules = {
     driverNumber: (v) => /^[A-Za-z0-9._-]{2,32}$/.test(v),
     displayName: (v) => safe(v).length <= 60,
@@ -281,9 +260,6 @@
     return { accountNumber, accountName, accountAddress, city, route };
   }
 
-  // =========================
-  // Sanitizers
-  // =========================
   function sanitizeUsers(list) {
     return (Array.isArray(list) ? list : []).map((u) => {
       const loginName = safe(u.driver_number ?? u.username).toLowerCase();
@@ -317,9 +293,6 @@
     }));
   }
 
-  // =========================
-  // CSV parser
-  // =========================
   function parseCsv(text) {
     const t = String(text ?? "")
       .replace(/\r\n/g, "\n")
@@ -387,9 +360,6 @@
     return rows;
   }
 
-  // =========================
-  // API layer
-  // =========================
   let custPage = 1;
   const CUST_PAGE_SIZE = 5;
 
@@ -628,9 +598,6 @@
     },
   };
 
-  // =========================
-  // Tabs
-  // =========================
   document.querySelectorAll(".tab").forEach((t) => {
     on(
       t,
@@ -650,9 +617,6 @@
     );
   });
 
-  // =========================
-  // USERS UI
-  // =========================
   async function renderUsers() {
     const wrap = $("usersTableWrap");
     if (!wrap) return;
@@ -886,9 +850,6 @@
     }
   }
 
-  // =========================
-  // CUSTOMERS UI
-  // =========================
   async function renderCustomers() {
     const wrap = $("customersTableWrap");
     if (!wrap) return;
@@ -1088,9 +1049,6 @@
     }
   }
 
-  // =========================
-  // Events
-  // =========================
   on($("userSearch"), "input", () => renderUsers(), { passive: true });
 
   on(
@@ -1163,9 +1121,6 @@
     window.location.href = "./login.html";
   });
 
-  // =========================
-  // Render
-  // =========================
   function renderAll() {
     renderUsers();
     renderCustomers();
