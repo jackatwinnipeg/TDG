@@ -247,10 +247,11 @@
   // Edge Function names
   // =========================
   const FN = {
-    createUser: "admin-create-user",
-    resetPassword: "admin-reset-password",
-    deleteUser: "admin-delete-user",
-  };
+  createUser: "admin-create-user",
+  updateUser: "admin-update-user",
+  resetPassword: "admin-reset-password",
+  deleteUser: "admin-delete-user",
+};
 
   // =========================
   // Modal
