@@ -950,66 +950,43 @@
     };
   }
 
-  async function openEditUser(id) {
-    let users;
-    try {
-      users = await Api.users.list();
-    } catch {
-      return alert("加载用户失败");
-    }
+ async function openEditUser(id) {
+  let users;
+  try {
+    users = await Api.users.list();
+  } catch {
+    return alert("加载用户失败");
+  }
 
-    const u = users.find((x) => x.id === id);
-    if (!u) return alert("用户不存在");
+  const u = users.find((x) => x.id === id);
+  if (!u) return alert("用户不存在");
 
-    const modal = openModal("编辑用户", userFormHtml({ mode: "edit", data: u }), {
-      onClose: renderAll,
-    });
-
-    $("btnCancel").onclick = () => modal.close();
-    $("btnSave").onclick = async () => {
-      try {
-        const patch = {
-          driverNumber: safe($("f_driverNumber").value),
-          displayName: safe($("f_displayName").value),
-          role: $("f_role").value,
-          isActive: $("f_active").value === "1",
-          mustChangePassword: $("f_mustChange").checked,
-          vehicleNo: safe($("f_vehicleNo").value),
-          phone: safe($("f_phone").value),
-          email: safe($("f_email").value),
-          password: safe($("f_password").value),
-        };
-
-        async update(id, patch) {
-  const u = normalizeUserPayload(
-    {
-      driverNumber: patch.driverNumber,
-      displayName: patch.displayName,
-      role: patch.role,
-      isActive: patch.isActive,
-      mustChangePassword: patch.mustChangePassword,
-      vehicleNo: patch.vehicleNo,
-      phone: patch.phone,
-      email: patch.email,
-      password: patch.password,
-    },
-    { mode: "update" }
-  );
-
-  const result = await callFn(FN.updateUser, {
-    id,
-    driverNumber: u.driverNumber,
-    displayName: u.displayName,
-    role: u.role,
-    isActive: u.isActive,
-    mustChangePassword: u.mustChangePassword,
-    vehicleNo: u.vehicleNo,
-    phone: u.phone,
-    email: u.email,
-    password: u.password,
+  const modal = openModal("编辑用户", userFormHtml({ mode: "edit", data: u }), {
+    onClose: renderAll,
   });
 
-  return sanitizeUsers([result?.user || result])[0];
+  $("btnCancel").onclick = () => modal.close();
+  $("btnSave").onclick = async () => {
+    try {
+      const patch = {
+        driverNumber: safe($("f_driverNumber").value),
+        displayName: safe($("f_displayName").value),
+        role: $("f_role").value,
+        isActive: $("f_active").value === "1",
+        mustChangePassword: $("f_mustChange").checked,
+        vehicleNo: safe($("f_vehicleNo").value),
+        phone: safe($("f_phone").value),
+        email: safe($("f_email").value),
+        password: safe($("f_password").value),
+      };
+
+      await Api.users.update(id, patch);
+      modal.close();
+      alert("已保存");
+    } catch (e) {
+      showApiError(e, "保存失败");
+    }
+  };
 }
 
   async function deleteUser(id, name) {
