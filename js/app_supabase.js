@@ -196,7 +196,7 @@
       // ---------------------------
       // Customer sync (server -> localStorage)
       // ---------------------------
-     async function syncCustomersFromServer({ silent = true } = {}) {
+async function syncCustomersFromServer({ silent = true } = {}) {
   const sb = window.supabaseClient;
 
   if (!sb?.auth || !sb?.from) {
@@ -208,6 +208,7 @@
     const { data: userData, error: userErr } = await sb.auth.getUser();
 
     if (userErr) {
+      console.warn("syncCustomersFromServer:getUser failed:", userErr);
       if (!silent) toast("同步失败", "读取登录状态失败：" + userErr.message);
       return { ok: false, reason: "auth_error", message: userErr.message };
     }
@@ -231,6 +232,7 @@
       .order("account_number", { ascending: true });
 
     if (error) {
+      console.warn("syncCustomersFromServer:select failed:", error);
       if (!silent) toast("同步失败", "Supabase 返回错误：" + error.message);
       return { ok: false, reason: "supabase_error", message: error.message };
     }
@@ -246,7 +248,11 @@
       updatedAt: row.updated_at || null,
     }));
 
-    localStorage.setItem(LS_CUSTOMERS, JSON.stringify(list));
+    if (list.length) {
+      localStorage.setItem(LS_CUSTOMERS, JSON.stringify(list));
+    }
+
+    console.log("TDG customers synced from Supabase:", list.length, list.slice(0, 5));
 
     if (!silent) {
       toast("已同步", `已从 Supabase 同步 ${list.length} 条客户。`);
@@ -255,9 +261,12 @@
     return { ok: true, count: list.length };
   } catch (e) {
     const msg = String(e?.message || e || "unknown");
+    console.warn("syncCustomersFromServer:unexpected error:", msg);
+
     if (!silent) {
       toast("同步失败", "网络或 Supabase 不可用，已继续使用本地客户库。");
     }
+
     return { ok: false, reason: "network", message: msg };
   }
 }
@@ -1607,5 +1616,6 @@ window.TDG_CUSTOMERS = {
   syncFromServer: syncCustomersFromServer,
 
 };
+
 
 
