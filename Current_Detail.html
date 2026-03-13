@@ -187,7 +187,7 @@
               </thead>
               <tbody id="tbody">
                 <tr>
-                  <td colspan="10" class="muted">No records.</td>
+                  <td colspan="10" class="muted">Loading...</td>
                 </tr>
               </tbody>
             </table>
@@ -284,11 +284,19 @@
 
       window.__TDG_DRIVERS__ = window.__TDG_DRIVERS__ || [];
       window.__TDG_DRIVER_DIR__ = window.__TDG_DRIVER_DIR__ || new Map();
+      window.__CURRENT_DETAIL_SOURCE__ = "local";
+
+      function getSupabaseClientStrict() {
+        const sb = window.supabaseClient;
+        if (!sb?.from || !sb?.auth) {
+          throw new Error("Supabase client not initialized");
+        }
+        return sb;
+      }
 
       async function loadDriversDirectory() {
         try {
-          const sb = window.supabase || window.supabaseClient;
-          if (!sb) return [];
+          const sb = getSupabaseClientStrict();
 
           const { data, error } = await sb
             .from("tdg_profiles")
@@ -316,7 +324,7 @@
         }
       }
 
-      function loadRecords() {
+      function loadLocalRecords() {
         try {
           const raw = localStorage.getItem(LS_RECORDS);
           const list = raw ? JSON.parse(raw) : [];
@@ -326,7 +334,7 @@
         }
       }
 
-      function saveRecords(list) {
+      function saveLocalRecords(list) {
         localStorage.setItem(LS_RECORDS, JSON.stringify(list));
       }
 
@@ -340,10 +348,101 @@
         }
       }
 
+      function tdgToday() {
+        return new Date().toISOString().slice(0, 10);
+      }
+
+      function mapSupabaseRecordToLocalShape(r) {
+        return {
+          remoteId: r.id,
+          clientRecordId: r.client_record_id,
+          driverNumber: r.driver_number || "",
+          driverName: r.driver_name || "",
+          date: r.work_date || "",
+          vehicleNo: r.vehicle_no || "",
+          weekCycle: r.week_cycle ?? "",
+          shiftStart: r.shift_start || "",
+          shiftFinish: r.shift_finish || "",
+          arrivalTime: r.arrival_time || "",
+          completedAt: r.completed_at || r.created_at || "",
+          accountNumber: r.account_number || "",
+          accountName: r.account_name || "",
+          accountAddress: r.account_address || "",
+          accountCity: r.account_city || "",
+          accountRoute: r.account_route || "",
+          tdgVolume: r.tdg_volume ?? 0,
+          deliveredVolume: r.delivered_volume ?? 0,
+          notes: r.notes || "",
+          synced: true,
+          syncError: "",
+          createdAt: r.created_at || "",
+          raw: r.raw || null,
+        };
+      }
+
+      async function pullTodayRecordsFromSupabase() {
+        const sb = getSupabaseClientStrict();
+        const sess = window.TDG_AUTH?.getSession?.();
+        if (!sess?.userId) throw new Error("No login session");
+
+        const { data, error } = await sb
+          .from("tdg_records")
+          .select(`
+            id,
+            client_record_id,
+            owner_id,
+            driver_number,
+            driver_name,
+            work_date,
+            vehicle_no,
+            week_cycle,
+            shift_start,
+            shift_finish,
+            arrival_time,
+            completed_at,
+            account_number,
+            account_name,
+            account_address,
+            account_city,
+            account_route,
+            tdg_volume,
+            delivered_volume,
+            notes,
+            raw,
+            created_at
+          `)
+          .eq("owner_id", sess.userId)
+          .eq("work_date", tdgToday())
+          .order("completed_at", { ascending: false });
+
+        if (error) throw error;
+
+        const list = (data || []).map(mapSupabaseRecordToLocalShape);
+        localStorage.setItem(LS_RECORDS, JSON.stringify(list));
+        window.__CURRENT_DETAIL_SOURCE__ = "supabase";
+
+        console.log("Current Detail pulled from Supabase:", list.length, list);
+        return list;
+      }
+
+      async function refreshRecordsSource() {
+        try {
+          await pullTodayRecordsFromSupabase();
+        } catch (e) {
+          console.warn("pullTodayRecordsFromSupabase failed, fallback to local:", e);
+          window.__CURRENT_DETAIL_SOURCE__ = "local";
+        }
+      }
+
       function fmtTime(r) {
-        const t = r.arrivalTime || "";
-        if (!t) return "-";
-        return escapeHtml(String(t).slice(0, 19).replace("T", " "));
+        const v =
+          r.completedAt ||
+          r.arrivalTime ||
+          r.updatedAt ||
+          r.createdAt ||
+          "";
+        if (!v) return "-";
+        return escapeHtml(formatLocalDateTime(v));
       }
 
       function buildDriverOptions(records) {
@@ -361,8 +460,7 @@
             const name = safe(d.display_name || "");
             const opt = document.createElement("option");
             opt.value = dn;
-            if (!name) return;
-            opt.textContent = name;
+            opt.textContent = name || dn;
             sel.appendChild(opt);
           });
           sel.value = cur;
@@ -373,7 +471,7 @@
         records.forEach((r) => {
           const dn = safe(r.driverNumber || "");
           const name = safe(r.driverName || r.displayName || r.driver || "");
-          if (dn) drivers.set(dn, name);
+          if (dn) drivers.set(dn, name || dn);
         });
 
         sel.innerHTML = '<option value="">All</option>';
@@ -382,8 +480,7 @@
           .forEach(([dn, name]) => {
             const opt = document.createElement("option");
             opt.value = dn;
-            if (!name) return;
-            opt.textContent = name;
+            opt.textContent = name || dn;
             sel.appendChild(opt);
           });
 
@@ -425,10 +522,12 @@
       }
 
       function syncBadge(r) {
-        if (r.synced === true || r.remoteId)
+        if (r.synced === true || r.remoteId) {
           return '<span class="chip ok">synced</span>';
-        if (r.synced === false)
+        }
+        if (r.synced === false) {
           return '<span class="chip danger">pending</span>';
+        }
         return '<span class="chip">local</span>';
       }
 
@@ -460,7 +559,7 @@
       }
 
       function render() {
-        const all = loadRecords()
+        const all = loadLocalRecords()
           .map((r, rawIndex) => ({
             ...normalizeForView(r),
             __rawIndex: rawIndex,
@@ -497,8 +596,8 @@
 
         $("pageChip").textContent = `Page ${page}/${totalPages}`;
         $("pagerInfo").textContent = total
-          ? `Showing ${start + 1}-${Math.min(start + PAGE_SIZE, total)} of ${total}`
-          : "No records";
+          ? `Showing ${start + 1}-${Math.min(start + PAGE_SIZE, total)} of ${total} · source: ${window.__CURRENT_DETAIL_SOURCE__}`
+          : `No records · source: ${window.__CURRENT_DETAIL_SOURCE__}`;
         $("btnPrev").disabled = page === 1;
         $("btnNext").disabled = page === totalPages;
 
@@ -515,7 +614,7 @@
             const driverName =
               safe(r.driverName || r.displayName || r.driver || "") ||
               safe(window.__TDG_DRIVER_DIR__?.get?.(dn) || "");
-            const driver = escapeHtml(driverName);
+            const driver = escapeHtml(driverName || dn);
             const acct = escapeHtml(r.acct);
             const nameAddr = `<div style="font-weight:800">${escapeHtml(r.name)}</div>
                               <div class="muted" style="margin-top:6px">${escapeHtml(r.addr)}</div>`;
@@ -545,7 +644,7 @@
       }
 
       function exportPdf() {
-        const list = loadRecords();
+        const list = loadLocalRecords();
         if (!list.length) return alert("No records to export.");
 
         const sess = window.TDG_AUTH?.getSession?.() || {};
@@ -627,7 +726,7 @@
             )
             .filter(Boolean)
             .sort();
-          shiftStart = times[0] ? times[0].slice(11, 16) : "";
+          shiftStart = times[0] ? formatLocalTime(times[0]) : "";
         }
 
         const payload = {
@@ -650,6 +749,29 @@
 
         localStorage.setItem("tdg_export_payload_v1", JSON.stringify(payload));
         window.open("./export_tdg_print_optimized.html", "_blank");
+      }
+
+      async function deleteRemoteRecordIfNeeded(record) {
+        if (!record?.remoteId && !record?.clientRecordId) {
+          return { ok: true, skipped: true };
+        }
+
+        const sb = getSupabaseClientStrict();
+        const sess = window.TDG_AUTH?.getSession?.();
+        if (!sess?.userId) throw new Error("No login session");
+
+        let q = sb.from("tdg_records").delete().eq("owner_id", sess.userId);
+
+        if (record.remoteId) {
+          q = q.eq("id", record.remoteId);
+        } else {
+          q = q.eq("client_record_id", record.clientRecordId);
+        }
+
+        const { error } = await q;
+        if (error) throw error;
+
+        return { ok: true };
       }
 
       document.addEventListener("DOMContentLoaded", async () => {
@@ -678,10 +800,28 @@
         $("btnLogout").addEventListener("click", () =>
           window.TDG_AUTH.logout(),
         );
+
         $("btnExport").addEventListener("click", exportPdf);
 
-        $("btnClear").addEventListener("click", () => {
+        $("btnClear").addEventListener("click", async () => {
           if (!confirm("⚠️确定清空所有送货记录？（不可恢复）")) return;
+
+          try {
+            const sb = getSupabaseClientStrict();
+            const session = window.TDG_AUTH?.getSession?.();
+            if (!session?.userId) throw new Error("No login session");
+
+            const { error } = await sb
+              .from("tdg_records")
+              .delete()
+              .eq("owner_id", session.userId)
+              .eq("work_date", tdgToday());
+
+            if (error) throw error;
+          } catch (e) {
+            console.warn("Remote clear failed, continue clearing local only:", e);
+          }
+
           localStorage.removeItem(LS_RECORDS);
           render();
           alert("已清空。");
@@ -715,7 +855,7 @@
           render();
         });
 
-        document.addEventListener("click", (e) => {
+        document.addEventListener("click", async (e) => {
           const b = e.target.closest("button[data-act]");
           if (!b) return;
 
@@ -723,7 +863,7 @@
           if (act !== "del") return;
 
           const rawIndex = Number(b.getAttribute("data-idx"));
-          const list = loadRecords();
+          const list = loadLocalRecords();
 
           if (!(rawIndex >= 0 && rawIndex < list.length)) {
             alert("Record not found.");
@@ -737,12 +877,21 @@
 
           if (!confirm("Delete record: " + label + " ?")) return;
 
+          try {
+            await deleteRemoteRecordIfNeeded(r);
+          } catch (err) {
+            console.error("Delete remote failed:", err);
+            alert("云端删除失败，记录未删除。请检查权限或网络。");
+            return;
+          }
+
           list.splice(rawIndex, 1);
-          saveRecords(list);
+          saveLocalRecords(list);
           refreshListAfterDelete();
         });
 
         await loadDriversDirectory();
+        await refreshRecordsSource();
         render();
       });
     </script>
