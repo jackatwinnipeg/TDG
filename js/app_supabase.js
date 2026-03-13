@@ -793,7 +793,7 @@ async function loadWeekCycle() {
           tdg: {
             base: cal.base,
             totalDelivered: cal.totalDelivered,
-            remaining: cal.remaining,
+            remaining: cal. remaining,
           },
           form,
           records,
@@ -1607,3 +1607,4 @@ window.TDG_CUSTOMERS = {
   syncFromServer: syncCustomersFromServer,
 
 };
+
