@@ -810,36 +810,36 @@ async function loadWeekCycle() {
       }
 
       async function postJsonWithTimeout(
-        url,
-        payload,
-        { timeoutMs = 8000 } = {},
-      ) {
-        const ctrl = new AbortController();
-        const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  url,
+  payload,
+  { timeoutMs = 8000 } = {},
+) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
 
-        const token = await getAuthTokenSafe();
-        const headers = { "Content-Type": "application/json" };
-        if (token) headers["Authorization"] = "Bearer " + token;
+  const token = await getAuthTokenSafe();
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = "Bearer " + token;
 
-        try {
-          const res = await fetch(url, {
-            method: "POST",
-            headers,
-            body: JSON.stringify(payload),
-            signal: ctrl.signal,
-          });
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+      signal: ctrl.signal,
+    });
 
-          const text = await res.text().catch(() => "");
-          let data = null;
-          try {
-            data = text ? JSON.parse(text) : null;
-          } catch {}
+    const text = await res.text().catch(() => "");
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {}
 
-          return { ok: res.ok, status: res.status, data, text };
-        } finally {
-          clearTimeout(t);
-        }
-      }
+    return { ok: res.ok, status: res.status, data, text };
+  } finally {
+    clearTimeout(t);
+  }
+}
 
       async function backupDailyToServer(reason = "manual") {
         const payload = buildDailyPayload(reason);
@@ -1314,161 +1314,158 @@ async function uploadFinalDailyLogAndOffDuty(reason = "off_duty") {
       // ---------------------------
       // Wire up
       // ---------------------------
-      document.addEventListener("DOMContentLoaded", () => {
-        function updateTotalKm() {
-          const start = Number($("startKm")?.value || 0);
-          const end = Number($("endKm")?.value || 0);
+      document.addEventListener("DOMContentLoaded", async () => {
+  function updateTotalKm() {
+    const start = Number($("startKm")?.value || 0);
+    const end = Number($("endKm")?.value || 0);
 
-          if (!start && !end) {
-            $("totalKm").value = "";
-            return;
-          }
+    if (!start && !end) {
+      $("totalKm").value = "";
+      return;
+    }
 
-          const total = end - start;
-          $("totalKm").value = total >= 0 ? total : "";
-        }
+    const total = end - start;
+    $("totalKm").value = total >= 0 ? total : "";
+  }
 
-        $("startKm")?.addEventListener("input", updateTotalKm);
-        $("endKm")?.addEventListener("input", updateTotalKm);
-        // ============================
-        // Enterprise: Auth gate (single source of truth)
-        // ============================
-        const sess = window.TDG_AUTH?.requireAuth?.(); // not logged in -> redirect login.html
-        if (!sess) return;
+  $("startKm")?.addEventListener("input", updateTotalKm);
+  $("endKm")?.addEventListener("input", updateTotalKm);
 
-        const fillDriverFromSession = (s) => {
-          const dn = s.driverNumber || s.username || "";
-          const nm = s.displayName || s.username || "";
-          if ($("driverNumber")) $("driverNumber").value = dn;
-          if ($("driverName")) $("driverName").value = nm;
-        };
+  // ============================
+  // Enterprise: Auth gate
+  // ============================
+  const sess = window.TDG_AUTH?.requireAuth?.();
+  if (!sess) return;
 
-        fillDriverFromSession(sess);
+  const fillDriverFromSession = (s) => {
+    const dn = s.driverNumber || s.username || "";
+    const nm = s.displayName || s.username || "";
+    if ($("driverNumber")) $("driverNumber").value = dn;
+    if ($("driverName")) $("driverName").value = nm;
+  };
 
-        
+  fillDriverFromSession(sess);
 
-        // Restore index state when coming back from Current Detail
-        restoreIndexState();
-// Auto-fill TDG Volume from yesterday remaining (per-driver)
-        autoLoadVolumeFromYesterday();
+  // 先恢复页面状态
+  restoreIndexState();
 
-        // 按钮事件绑定
-        $("btnSeedDemo")?.addEventListener("click", seedDemoCustomers);
+  // 自动带入昨天余量
+  autoLoadVolumeFromYesterday();
 
-        $("btnSearch")?.addEventListener("click", () =>
-          renderResults(searchCustomers($("searchBox")?.value)),
-        );
+  // 绑定按钮事件
+  $("btnSeedDemo")?.addEventListener("click", seedDemoCustomers);
 
-        $("searchBox")?.addEventListener("keydown", (e) => {
-          if (e.key === "Enter") $("btnSearch")?.click();
-        });
+  $("btnSearch")?.addEventListener("click", () =>
+    renderResults(searchCustomers($("searchBox")?.value)),
+  );
 
-        $("btnClearSearch")?.addEventListener("click", () => {
-          if ($("searchBox")) $("searchBox").value = "";
-          renderResults([]);
-        });
+  $("searchBox")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") $("btnSearch")?.click();
+  });
 
-        $("btnArrive")?.addEventListener("click", confirmArrive);
-        $("btnCheckIn")?.addEventListener("click", checkIn);
-        $("btnCheckOut")?.addEventListener("click", checkOut);
+  $("btnClearSearch")?.addEventListener("click", () => {
+    if ($("searchBox")) $("searchBox").value = "";
+    renderResults([]);
+  });
 
-        $("btnSaveDraft")?.addEventListener("click", saveDraft);
-        $("btnDone")?.addEventListener("click", done);
-        $("btnReset")?.addEventListener("click", resetForm);
-        $("btnLogout")?.addEventListener("click", logoutFlow);
-        $("btnRemoteBackup")?.addEventListener("click", remoteBackupFlow);
+  $("btnArrive")?.addEventListener("click", confirmArrive);
+  $("btnCheckIn")?.addEventListener("click", checkIn);
+  $("btnCheckOut")?.addEventListener("click", checkOut);
 
-        $("btnLoadProfile")?.addEventListener("click", loadFromProfile);
-        $("btnLoadCalendar")?.addEventListener("click", loadFromCalendar);
-        $("btnLoadYesterday")?.addEventListener("click", loadFromYesterday);
+  $("btnSaveDraft")?.addEventListener("click", saveDraft);
+  $("btnDone")?.addEventListener("click", done);
+  $("btnReset")?.addEventListener("click", resetForm);
+  $("btnLogout")?.addEventListener("click", logoutFlow);
+  $("btnRemoteBackup")?.addEventListener("click", remoteBackupFlow);
 
-        $("weekCycle")?.addEventListener("change", async () => {
-          const val = Number($("weekCycle")?.value || 1);
+  $("btnLoadProfile")?.addEventListener("click", loadFromProfile);
+  $("btnLoadCalendar")?.addEventListener("click", loadFromCalendar);
+  $("btnLoadYesterday")?.addEventListener("click", loadFromYesterday);
 
-          try {
-          await saveWeekCycleAnchorToSupabase(val, new Date());
-          await loadWeekCycle();
-          toast("已更新", `Week Cycle 已设为 ${val}，将从本周起按周自动递增。`);
-          } catch (e) {
-          console.warn("saveWeekCycleAnchorToSupabase failed:", e);
-          // 失败时至少保留本地缓存，避免用户改了又丢
-          const weekStart = getWeekStartMonday(new Date());
-          setCachedWeekCycleAnchor(val, weekStart);
-          await loadWeekCycle();
-          toast("已本地保存", "云端更新失败，当前设备仍会按周自动递增。");
-          }
+  $("weekCycle")?.addEventListener("change", async () => {
+    const val = Number($("weekCycle")?.value || 1);
 
-          saveIndexState();
- });
+    try {
+      await saveWeekCycleAnchorToSupabase(val, new Date());
+      await loadWeekCycle();
+      toast("已更新", `Week Cycle 已设为 ${val}，将从本周起按周自动递增。`);
+    } catch (e) {
+      console.warn("saveWeekCycleAnchorToSupabase failed:", e);
+      const weekStart = getWeekStartMonday(new Date());
+      setCachedWeekCycleAnchor(val, weekStart);
+      await loadWeekCycle();
+      toast("已本地保存", "云端更新失败，当前设备仍会按周自动递增。");
+    }
 
-        $("btnToday")?.addEventListener("click", () => {
-          saveIndexState();
-          window.location.href = "./Current_Detail.html";
-        });
+    saveIndexState();
+  });
 
-        $("btnHistory")?.addEventListener("click", () => {
-          window.location.href = "./History_Record.html";
-        });
+  $("btnToday")?.addEventListener("click", () => {
+    saveIndexState();
+    window.location.href = "./Current_Detail.html";
+  });
 
-        $("btnGenText")?.addEventListener("click", () => {
-          toast("生成文本", "功能开发中");
-        });
+  $("btnHistory")?.addEventListener("click", () => {
+    window.location.href = "./History_Record.html";
+  });
 
-        // 注册 service worker
-        if ("serviceWorker" in navigator) {
-          window.addEventListener("load", async () => {
-            try {
-              await navigator.serviceWorker.register("./sw.js");
-            } catch {}
-          });
-        }
+  $("btnGenText")?.addEventListener("click", () => {
+    toast("生成文本", "功能开发中");
+  });
 
+  // 注册 service worker
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", async () => {
+      try {
+        await navigator.serviceWorker.register("./sw.js");
+      } catch {}
+    });
+  }
 
-        // Auto-save form fields to sessionStorage (so Back won't lose data)
-        [
-          "date","vehicleNo","tdgVolume","startKm","endKm","totalKm","weekCycle",
-          "accountNumber","accountName","accountAddress","accountCity","accountRoute",
-          "deliveredVolume","notes"
-        ].forEach((id) => {
-          const el = document.getElementById(id);
-          if (!el) return;
-          el.addEventListener("input", scheduleSaveIndexState, { passive: true });
-          el.addEventListener("change", scheduleSaveIndexState, { passive: true });
-        });
+  // 自动保存表单
+  [
+    "date","vehicleNo","tdgVolume","startKm","endKm","totalKm","weekCycle",
+    "accountNumber","accountName","accountAddress","accountCity","accountRoute",
+    "deliveredVolume","notes"
+  ].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener("input", scheduleSaveIndexState, { passive: true });
+    el.addEventListener("change", scheduleSaveIndexState, { passive: true });
+  });
 
-        // 初始化
-        const t = new Date();
-        const dateInput = $("date");
-        if (dateInput && !dateInput.value) {
-          dateInput.value = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
-        }
+  // 初始化日期
+  const t = new Date();
+  const dateInput = $("date");
+  if (dateInput && !dateInput.value) {
+    dateInput.value = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+  }
 
-        document.addEventListener("DOMContentLoaded", async () => {
-
+  // 初始化 UI
   ensureDemoProfile();
   renderShiftTime();
   renderArrivalUI();
 
+  // 恢复草稿
   loadDraftIfAny();
 
+  // 加载 week cycle
   await loadWeekCycle();
 
-  // Ensure driver fields always follow session (draft must not override)
+  // 再次确保司机信息不被草稿覆盖
   fillDriverFromSession(sess);
 
-  // Auto-sync customers from server
-  syncCustomersFromServer({ silent: true });
+  // 如果本地一个客户都没有，先写入 demo，避免页面空白
+  if (!getCustomers().length) {
+    seedDemoCustomers();
+  }
 
+  // 从 Supabase 同步真实客户库
+  await syncCustomersFromServer({ silent: true });
+
+  // 再次确保司机信息不被任何恢复逻辑覆盖
+  fillDriverFromSession(sess);
 });
-
-        // Ensure driver fields always follow session (draft must not override)
-        fillDriverFromSession(sess);
-
-        // Auto-sync customers from server (best-effort)
-        // If offline / not logged in, it will silently keep using localStorage customers.
-        syncCustomersFromServer({ silent: true });
-      });
-
 
       // ---------------------------
       // SessionStorage: index state for back/forward navigation
@@ -1616,6 +1613,7 @@ window.TDG_CUSTOMERS = {
   syncFromServer: syncCustomersFromServer,
 
 };
+
 
 
 
