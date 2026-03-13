@@ -177,11 +177,10 @@
   // Edge Function names
   // =========================
   const FN = {
-    createUser: "admin-create-user",
-    updateUser: "admin-update-user",
-    resetPassword: "admin-reset-password",
-    deleteUser: "admin-delete-user",
-  };
+  createUser: "admin-create-user",
+  updateUser: "admin-update-user",
+  deleteUser: "admin-delete-user",
+};
 
   // =========================
   // Modal
@@ -438,37 +437,36 @@
       },
 
       async update(id, patch) {
-        const u = normalizeUserPayload(
-          {
-            driverNumber: patch.driverNumber,
-            displayName: patch.displayName,
-            role: patch.role,
-            isActive: patch.isActive,
-            mustChangePassword: patch.mustChangePassword,
-            vehicleNo: patch.vehicleNo,
-            phone: patch.phone,
-            email: patch.email,
-            password: patch.password,
-          },
-          { mode: "update" }
-        );
+  const u = normalizeUserPayload(
+    {
+      driverNumber: patch.driverNumber,
+      displayName: patch.displayName,
+      role: patch.role,
+      isActive: patch.isActive,
+      mustChangePassword: patch.mustChangePassword,
+      vehicleNo: patch.vehicleNo,
+      phone: patch.phone,
+      email: patch.email,
+      password: patch.password,
+    },
+    { mode: "update" }
+  );
 
-        if (FN.updateUser) {
-          const result = await callFn(FN.updateUser, {
-            id,
-            driverNumber: u.driverNumber,
-            displayName: u.displayName,
-            role: u.role,
-            isActive: u.isActive,
-            mustChangePassword: u.mustChangePassword,
-            vehicleNo: u.vehicleNo,
-            phone: u.phone,
-            email: u.email,
-            password: u.password,
-          });
+  const result = await callFn(FN.updateUser, {
+    id,
+    driverNumber: u.driverNumber,
+    displayName: u.displayName,
+    role: u.role,
+    isActive: u.isActive,
+    mustChangePassword: u.mustChangePassword,
+    vehicleNo: u.vehicleNo,
+    phone: u.phone,
+    email: u.email,
+    password: u.password,
+  });
 
-          return sanitizeUsers([result?.user || result])[0];
-        }
+  return sanitizeUsers([result?.user || result])[0];
+}
 
         const sb = getSb();
 
