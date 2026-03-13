@@ -2,15 +2,15 @@
  * Supabase-first Admin Panel
  * - Users: uses public.tdg_profiles
  * - Auth guard: uses window.TDG_AUTH from auth_supabase.js
- * - Customers: keeps existing localStorage logic for now
- * - Create / Reset Password / Delete User: via Edge Functions
+ * - Customers: uses public.tdg_customers
+ * - Create / Update / Delete User: via Edge Functions / Supabase
  *
  * IMPORTANT:
  * - username === driver_number
  */
 (() => {
   "use strict";
-  console.log("admin.js fallback patch loaded");
+  console.log("admin.js loaded");
 
   // =========================
   // DOM helpers
@@ -19,6 +19,7 @@
   const on = (el, ev, fn, opts) => el && el.addEventListener(ev, fn, opts);
   const safe = (v) => String(v ?? "").trim();
   const lower = (v) => safe(v).toLowerCase();
+  const nowIso = () => new Date().toISOString();
 
   // =========================
   // Basic XSS-safe escaping
@@ -31,15 +32,15 @@
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#039;");
 
-  const nowIso = () => new Date().toISOString();
-
   // =========================
   // Auth guard
   // =========================
   const sess = window.TDG_AUTH?.requireAuth?.({ roles: ["admin"] });
   if (!sess) return;
 
-  $("who").textContent = `当前登录：${sess.displayName || sess.username}（${sess.role}）`;
+  if ($("who")) {
+    $("who").textContent = `当前登录：${sess.displayName || sess.username}（${sess.role}）`;
+  }
   on($("btnLogout"), "click", () => window.TDG_AUTH.logout());
 
   // =========================
@@ -56,7 +57,6 @@
   async function getSbSession() {
     const sb = getSb();
     const { data, error } = await sb.auth.getSession();
-
     if (error) throw error;
     return data?.session || null;
   }
@@ -67,7 +67,6 @@
     if (!token) {
       throw new Error("登录已失效，请重新登录");
     }
-
     return token;
   }
 
@@ -135,7 +134,7 @@
         },
         body: method === "GET" ? undefined : JSON.stringify(payload ?? {}),
       });
-    } catch (err) {
+    } catch {
       throw new Error("网络请求失败，无法连接 Edge Function");
     }
 
@@ -162,75 +161,6 @@
     return json;
   }
 
-  async function createUserViaClientFallback(payload) {
-    const sb = getSb();
-    const currentSession = await getSbSession();
-    if (!currentSession?.access_token || !currentSession?.refresh_token) {
-      throw new Error("登录已失效，请重新登录");
-    }
-
-    const u = normalizeUserPayload(payload, { mode: "create" });
-    const loginEmail = canonicalEmailFromDriverNumber(u.driverNumber, u.email);
-
-    let createdUserId = "";
-    let createdProfile = null;
-
-    try {
-      const { data, error } = await sb.auth.signUp({
-        email: loginEmail,
-        password: u.password,
-        options: {
-          data: {
-            username: u.driverNumber,
-            driver_number: u.driverNumber,
-            display_name: u.displayName,
-            role: u.role,
-          },
-        },
-      });
-
-      if (error) throw error;
-
-      createdUserId = safe(data?.user?.id);
-      if (!createdUserId) {
-        throw new Error("已创建登录账号失败：未返回用户 ID");
-      }
-
-      const { data: profile, error: profileError } = await sb
-        .from("tdg_profiles")
-        .upsert(
-          {
-            id: createdUserId,
-            username: u.driverNumber,
-            driver_number: u.driverNumber,
-            display_name: u.displayName,
-            role: u.role,
-            is_active: u.isActive,
-            must_change_password: u.mustChangePassword,
-            vehicle_no: u.vehicleNo,
-            phone: u.phone,
-            email: loginEmail,
-            updated_at: nowIso(),
-          },
-          { onConflict: "id" }
-        )
-        .select(
-          "id, username, driver_number, display_name, role, is_active, must_change_password, vehicle_no, phone, email, created_at, updated_at"
-        )
-        .single();
-
-      if (profileError) throw profileError;
-      createdProfile = profile;
-      return sanitizeUsers([profile])[0];
-    } finally {
-      try {
-        await restoreSession(currentSession);
-      } catch (e) {
-        console.warn("Restore session after fallback create failed:", e);
-      }
-    }
-  }
-
   function showApiError(err, fallback = "操作失败") {
     const msg = String(err?.message || fallback);
 
@@ -247,11 +177,11 @@
   // Edge Function names
   // =========================
   const FN = {
-  createUser: "admin-create-user",
-  updateUser: "admin-update-user",
-  resetPassword: "admin-reset-password",
-  deleteUser: "admin-delete-user",
-};
+    createUser: "admin-create-user",
+    updateUser: "admin-update-user",
+    resetPassword: "admin-reset-password",
+    deleteUser: "admin-delete-user",
+  };
 
   // =========================
   // Modal
@@ -263,6 +193,11 @@
     $("modalBackdrop").setAttribute("aria-hidden", "false");
 
     let closed = false;
+
+    const esc = (ev) => {
+      if (ev.key === "Escape") close();
+    };
+
     const close = () => {
       if (closed) return;
       closed = true;
@@ -270,6 +205,7 @@
       $("modalBackdrop").setAttribute("aria-hidden", "true");
       $("modalBody").innerHTML = "";
       document.removeEventListener("keydown", esc);
+      $("modalBackdrop").onclick = null;
       onClose && onClose();
     };
 
@@ -277,9 +213,6 @@
       if (e.target === $("modalBackdrop")) close();
     };
 
-    const esc = (ev) => {
-      if (ev.key === "Escape") close();
-    };
     document.addEventListener("keydown", esc);
 
     return { close };
@@ -324,7 +257,6 @@
     if (mode === "create") {
       assertOrThrow(password.length >= 6, "密码至少 6 位");
     }
-
     if (mode === "update" && password) {
       assertOrThrow(password.length >= 6, "密码至少 6 位");
     }
@@ -358,14 +290,12 @@
     return { accountNumber, accountName, accountAddress, city, route };
   }
 
-
   // =========================
   // Sanitizers
   // =========================
   function sanitizeUsers(list) {
     return (Array.isArray(list) ? list : []).map((u) => {
       const loginName = safe(u.driver_number ?? u.username).toLowerCase();
-
       return {
         id: safe(u.id),
         username: loginName,
@@ -384,17 +314,17 @@
   }
 
   function sanitizeCustomers(list) {
-  return (Array.isArray(list) ? list : []).map((c) => ({
-    id: safe(c.id),
-    accountNumber: safe(c.account_number ?? c.accountNumber),
-    accountName: safe(c.account_name ?? c.accountName),
-    accountAddress: safe(c.account_address ?? c.accountAddress),
-    city: safe(c.city),
-    route: safe(c.route),
-    createdAt: safe(c.created_at ?? c.createdAt),
-    updatedAt: safe(c.updated_at ?? c.updatedAt),
-  }));
-}
+    return (Array.isArray(list) ? list : []).map((c) => ({
+      id: safe(c.id),
+      accountNumber: safe(c.account_number ?? c.accountNumber),
+      accountName: safe(c.account_name ?? c.accountName),
+      accountAddress: safe(c.account_address ?? c.accountAddress),
+      city: safe(c.city),
+      route: safe(c.route),
+      createdAt: safe(c.created_at ?? c.createdAt),
+      updatedAt: safe(c.updated_at ?? c.updatedAt),
+    }));
+  }
 
   // =========================
   // CSV parser
@@ -409,6 +339,7 @@
     const lines = [];
     let cur = "";
     let inQ = false;
+
     for (let i = 0; i < t.length; i++) {
       const ch = t[i];
       if (ch === '"') {
@@ -437,19 +368,21 @@
           if (q && row[i + 1] === '"') {
             s += '"';
             i++;
-          } else q = !q;
+          } else {
+            q = !q;
+          }
         } else if (ch === "," && !q) {
           out.push(s);
           s = "";
-        } else s += ch;
+        } else {
+          s += ch;
+        }
       }
       out.push(s);
       return out.map((x) => x.trim());
     };
 
-    const header = splitRow(lines[0]).map((h) =>
-      h.replace(/^\uFEFF/, "").trim()
-    );
+    const header = splitRow(lines[0]).map((h) => h.replace(/^\uFEFF/, "").trim());
     const rows = [];
 
     for (let i = 1; i < lines.length; i++) {
@@ -459,6 +392,7 @@
       for (let j = 0; j < header.length; j++) obj[header[j]] = cols[j] ?? "";
       rows.push(obj);
     }
+
     return rows;
   }
 
@@ -484,24 +418,24 @@
       },
 
       async create(payload) {
-  const u = normalizeUserPayload(payload, { mode: "create" });
-  const email = canonicalEmailFromDriverNumber(u.driverNumber, u.email);
+        const u = normalizeUserPayload(payload, { mode: "create" });
+        const email = canonicalEmailFromDriverNumber(u.driverNumber, u.email);
 
-  const result = await callFn(FN.createUser, {
-    username: u.driverNumber,
-    driverNumber: u.driverNumber,
-    email,
-    password: u.password,
-    displayName: u.displayName,
-    role: u.role,
-    vehicleNo: u.vehicleNo,
-    phone: u.phone,
-    isActive: u.isActive,
-    mustChangePassword: u.mustChangePassword,
-  });
+        const result = await callFn(FN.createUser, {
+          username: u.driverNumber,
+          driverNumber: u.driverNumber,
+          email,
+          password: u.password,
+          displayName: u.displayName,
+          role: u.role,
+          vehicleNo: u.vehicleNo,
+          phone: u.phone,
+          isActive: u.isActive,
+          mustChangePassword: u.mustChangePassword,
+        });
 
-  return sanitizeUsers([result?.user || result])[0];
-},
+        return sanitizeUsers([result?.user || result])[0];
+      },
 
       async update(id, patch) {
         const u = normalizeUserPayload(
@@ -518,6 +452,23 @@
           },
           { mode: "update" }
         );
+
+        if (FN.updateUser) {
+          const result = await callFn(FN.updateUser, {
+            id,
+            driverNumber: u.driverNumber,
+            displayName: u.displayName,
+            role: u.role,
+            isActive: u.isActive,
+            mustChangePassword: u.mustChangePassword,
+            vehicleNo: u.vehicleNo,
+            phone: u.phone,
+            email: u.email,
+            password: u.password,
+          });
+
+          return sanitizeUsers([result?.user || result])[0];
+        }
 
         const sb = getSb();
 
@@ -559,168 +510,166 @@
       },
     },
 
-   customers: {
-  async list() {
-    const sb = getSb();
-    const { data, error } = await sb
-      .from("tdg_customers")
-      .select("id, account_number, account_name, account_address, city, route, created_at, updated_at")
-      .order("account_number", { ascending: true });
+    customers: {
+      async list() {
+        const sb = getSb();
+        const { data, error } = await sb
+          .from("tdg_customers")
+          .select(
+            "id, account_number, account_name, account_address, city, route, created_at, updated_at"
+          )
+          .order("account_number", { ascending: true });
 
-    if (error) throw error;
-    return sanitizeCustomers(data || []);
-  },
+        if (error) throw error;
+        return sanitizeCustomers(data || []);
+      },
 
-  async create(payload) {
-    const c = normalizeCustomerPayload(payload);
-    const sb = getSb();
+      async create(payload) {
+        const c = normalizeCustomerPayload(payload);
+        const sb = getSb();
 
-    const { data, error } = await sb
-      .from("tdg_customers")
-      .insert({
-        account_number: c.accountNumber,
-        account_name: c.accountName,
-        account_address: c.accountAddress,
-        city: c.city,
-        route: c.route,
-      })
-      .select("id, account_number, account_name, account_address, city, route, created_at, updated_at")
-      .single();
+        const { data, error } = await sb
+          .from("tdg_customers")
+          .insert({
+            account_number: c.accountNumber,
+            account_name: c.accountName,
+            account_address: c.accountAddress,
+            city: c.city,
+            route: c.route,
+          })
+          .select(
+            "id, account_number, account_name, account_address, city, route, created_at, updated_at"
+          )
+          .single();
 
-    if (error) {
-      if (String(error.message || "").toLowerCase().includes("duplicate")) {
-        throw new Error("Account Number 已存在");
-      }
-      throw error;
-    }
+        if (error) {
+          if (String(error.message || "").toLowerCase().includes("duplicate")) {
+            throw new Error("Account Number 已存在");
+          }
+          throw error;
+        }
 
-    return sanitizeCustomers([data])[0];
-  },
+        return sanitizeCustomers([data])[0];
+      },
 
-  async update(id, patch) {
-    const c = normalizeCustomerPayload(patch);
-    const sb = getSb();
+      async update(id, patch) {
+        const c = normalizeCustomerPayload(patch);
+        const sb = getSb();
 
-    const { data, error } = await sb
-      .from("tdg_customers")
-      .update({
-        account_number: c.accountNumber,
-        account_name: c.accountName,
-        account_address: c.accountAddress,
-        city: c.city,
-        route: c.route,
-        updated_at: nowIso(),
-      })
-      .eq("id", id)
-      .select("id, account_number, account_name, account_address, city, route, created_at, updated_at")
-      .single();
+        const { data, error } = await sb
+          .from("tdg_customers")
+          .update({
+            account_number: c.accountNumber,
+            account_name: c.accountName,
+            account_address: c.accountAddress,
+            city: c.city,
+            route: c.route,
+            updated_at: nowIso(),
+          })
+          .eq("id", id)
+          .select(
+            "id, account_number, account_name, account_address, city, route, created_at, updated_at"
+          )
+          .single();
 
-    if (error) {
-      if (String(error.message || "").toLowerCase().includes("duplicate")) {
-        throw new Error("Account Number 已存在");
-      }
-      throw error;
-    }
+        if (error) {
+          if (String(error.message || "").toLowerCase().includes("duplicate")) {
+            throw new Error("Account Number 已存在");
+          }
+          throw error;
+        }
 
-    return sanitizeCustomers([data])[0];
-  },
+        return sanitizeCustomers([data])[0];
+      },
 
-  async remove(id) {
-    const sb = getSb();
-    const { error } = await sb
-      .from("tdg_customers")
-      .delete()
-      .eq("id", id);
+      async remove(id) {
+        const sb = getSb();
+        const { error } = await sb.from("tdg_customers").delete().eq("id", id);
+        if (error) throw error;
+        return true;
+      },
 
-    if (error) throw error;
-    return true;
-  },
+      async importFromCsvText(csvText) {
+        const rows = parseCsv(csvText);
+        assertOrThrow(rows.length > 0, "CSV 没有数据");
 
-  async importFromCsvText(csvText) {
-    const rows = parseCsv(csvText);
-    assertOrThrow(rows.length > 0, "CSV 没有数据");
+        const mapped = rows
+          .map((r) => ({
+            account_number: safe(
+              r.accountNumber ??
+                r.accountNo ??
+                r.no ??
+                r.Position ??
+                r["Account Number"] ??
+                r["AccountNo"] ??
+                ""
+            ),
+            account_name: safe(
+              r.accountName ??
+                r.name ??
+                r["Customer Name"] ??
+                r["Account Name"] ??
+                ""
+            ),
+            account_address: safe(
+              r.accountAddress ??
+                r.address ??
+                r.Address ??
+                r["Account Address"] ??
+                ""
+            ),
+            city: safe(r.city ?? r.City ?? ""),
+            route: safe(r.route ?? r.Route ?? ""),
+          }))
+          .filter((x) => x.account_number && x.account_name);
 
-    const mapped = rows
-      .map((r) => ({
-        account_number: safe(
-          r.accountNumber ??
-            r.accountNo ??
-            r.no ??
-            r.Position ??
-            r["Account Number"] ??
-            r["AccountNo"] ??
-            ""
-        ),
-        account_name: safe(
-          r.accountName ??
-            r.name ??
-            r["Customer Name"] ??
-            r["Account Name"] ??
-            ""
-        ),
-        account_address: safe(
-          r.accountAddress ??
-            r.address ??
-            r.Address ??
-            r["Account Address"] ??
-            ""
-        ),
-        city: safe(r.city ?? r.City ?? ""),
-        route: safe(r.route ?? r.Route ?? ""),
-      }))
-      .filter((x) => x.account_number && x.account_name);
+        assertOrThrow(mapped.length > 0, "CSV 缺少必要字段（Account Number / Name）");
 
-    assertOrThrow(mapped.length > 0, "CSV 缺少必要字段（Account Number / Name）");
+        const sb = getSb();
+        const { error } = await sb.from("tdg_customers").upsert(mapped, {
+          onConflict: "account_number",
+          ignoreDuplicates: false,
+        });
 
-    const sb = getSb();
-    const { error } = await sb
-      .from("tdg_customers")
-      .upsert(mapped, {
-        onConflict: "account_number",
-        ignoreDuplicates: false,
-      });
+        if (error) throw error;
+        return mapped.length;
+      },
 
-    if (error) throw error;
-    return mapped.length;
-  },
+      async migrateFromLocalStorage() {
+        let local = [];
+        try {
+          local = JSON.parse(localStorage.getItem("tdg_customers_demo_v2") || "[]");
+        } catch {
+          local = [];
+        }
 
-  async migrateFromLocalStorage() {
-    let local = [];
-    try {
-      local = JSON.parse(localStorage.getItem("tdg_customers_demo_v2") || "[]");
-    } catch {
-      local = [];
-    }
+        if (!Array.isArray(local) || !local.length) {
+          return 0;
+        }
 
-    if (!Array.isArray(local) || !local.length) {
-      return 0;
-    }
+        const rows = local
+          .map((c) => ({
+            account_number: safe(c.accountNumber),
+            account_name: safe(c.accountName),
+            account_address: safe(c.accountAddress),
+            city: safe(c.city),
+            route: safe(c.route),
+          }))
+          .filter((x) => x.account_number && x.account_name);
 
-    const rows = local
-      .map((c) => ({
-        account_number: safe(c.accountNumber),
-        account_name: safe(c.accountName),
-        account_address: safe(c.accountAddress),
-        city: safe(c.city),
-        route: safe(c.route),
-      }))
-      .filter((x) => x.account_number && x.account_name);
+        if (!rows.length) return 0;
 
-    if (!rows.length) return 0;
+        const sb = getSb();
+        const { error } = await sb.from("tdg_customers").upsert(rows, {
+          onConflict: "account_number",
+          ignoreDuplicates: false,
+        });
 
-    const sb = getSb();
-    const { error } = await sb
-      .from("tdg_customers")
-      .upsert(rows, {
-        onConflict: "account_number",
-        ignoreDuplicates: false,
-      });
+        if (error) throw error;
 
-    if (error) throw error;
-
-    return rows.length;
-  },
-},
+        return rows.length;
+      },
+    },
   };
 
   // =========================
@@ -731,14 +680,14 @@
       t,
       "click",
       () => {
-        document
-          .querySelectorAll(".tab")
-          .forEach((x) => x.classList.remove("active"));
+        document.querySelectorAll(".tab").forEach((x) => x.classList.remove("active"));
         t.classList.add("active");
+
         const tab = t.getAttribute("data-tab");
         $("panel-users").style.display = tab === "users" ? "" : "none";
         $("panel-customers").style.display = tab === "customers" ? "" : "none";
         $("panel-tools").style.display = tab === "tools" ? "" : "none";
+
         renderAll();
       },
       { passive: true }
@@ -768,25 +717,17 @@
         );
       }
 
-      users.sort((a, b) =>
-        safe(a.driverNumber).localeCompare(safe(b.driverNumber))
-      );
+      users.sort((a, b) => safe(a.driverNumber).localeCompare(safe(b.driverNumber)));
     } catch (e) {
-      wrap.innerHTML = `<div class="empty">加载失败：${escapeHtml(
-        e.message || "error"
-      )}</div>`;
+      wrap.innerHTML = `<div class="empty">加载失败：${escapeHtml(e.message || "error")}</div>`;
       return;
     }
 
     const rows = users
       .map((u) => {
         const roleChip = `<span class="chip">${escapeHtml(u.role)}</span>`;
-        const activeChip = `<span class="chip">${
-          u.isActive ? "active" : "disabled"
-        }</span>`;
-        const must = u.mustChangePassword
-          ? `<span class="chip">must change pwd</span>`
-          : "";
+        const activeChip = `<span class="chip">${u.isActive ? "active" : "disabled"}</span>`;
+        const must = u.mustChangePassword ? `<span class="chip">must change pwd</span>` : "";
         const sub = [
           u.displayName ? escapeHtml(u.displayName) : "",
           u.vehicleNo ? `Vehicle: ${escapeHtml(u.vehicleNo)}` : "",
@@ -800,23 +741,15 @@
           <tr>
             <td>
               <div style="font-weight:800">${escapeHtml(u.driverNumber)}</div>
-              ${
-                sub
-                  ? `<div class="muted" style="margin-top:6px">${sub}</div>`
-                  : ""
-              }
+              ${sub ? `<div class="muted" style="margin-top:6px">${sub}</div>` : ""}
             </td>
             <td>${roleChip} ${activeChip} ${must}</td>
             <td>
               <div class="muted">Created: ${
-                u.createdAt
-                  ? escapeHtml(u.createdAt.slice(0, 19).replace("T", " "))
-                  : "-"
+                u.createdAt ? escapeHtml(u.createdAt.slice(0, 19).replace("T", " ")) : "-"
               }</div>
               <div class="muted">Updated: ${
-                u.updatedAt
-                  ? escapeHtml(u.updatedAt.slice(0, 19).replace("T", " "))
-                  : "-"
+                u.updatedAt ? escapeHtml(u.updatedAt.slice(0, 19).replace("T", " ")) : "-"
               }</div>
             </td>
             <td style="white-space:nowrap">
@@ -825,9 +758,7 @@
               )}" type="button">编辑</button>
               <button class="btn warn" data-act="user-del" data-id="${escapeHtml(
                 u.id
-              )}" data-name="${escapeHtml(
-                u.driverNumber || u.username
-              )}" type="button">删除</button>
+              )}" data-name="${escapeHtml(u.driverNumber || u.username)}" type="button">删除</button>
             </td>
           </tr>
         `;
@@ -905,9 +836,7 @@
         </div>
         <div style="display:flex;align-items:end">
           <label style="display:flex;align-items:center;gap:8px;margin:0">
-            <input id="f_mustChange" type="checkbox" ${
-              u.mustChangePassword ? "checked" : ""
-            } />
+            <input id="f_mustChange" type="checkbox" ${u.mustChangePassword ? "checked" : ""} />
             must change password on next login
           </label>
         </div>
@@ -950,44 +879,44 @@
     };
   }
 
- async function openEditUser(id) {
-  let users;
-  try {
-    users = await Api.users.list();
-  } catch {
-    return alert("加载用户失败");
-  }
-
-  const u = users.find((x) => x.id === id);
-  if (!u) return alert("用户不存在");
-
-  const modal = openModal("编辑用户", userFormHtml({ mode: "edit", data: u }), {
-    onClose: renderAll,
-  });
-
-  $("btnCancel").onclick = () => modal.close();
-  $("btnSave").onclick = async () => {
+  async function openEditUser(id) {
+    let users;
     try {
-      const patch = {
-        driverNumber: safe($("f_driverNumber").value),
-        displayName: safe($("f_displayName").value),
-        role: $("f_role").value,
-        isActive: $("f_active").value === "1",
-        mustChangePassword: $("f_mustChange").checked,
-        vehicleNo: safe($("f_vehicleNo").value),
-        phone: safe($("f_phone").value),
-        email: safe($("f_email").value),
-        password: safe($("f_password").value),
-      };
-
-      await Api.users.update(id, patch);
-      modal.close();
-      alert("已保存");
-    } catch (e) {
-      showApiError(e, "保存失败");
+      users = await Api.users.list();
+    } catch {
+      return alert("加载用户失败");
     }
-  };
-}
+
+    const u = users.find((x) => x.id === id);
+    if (!u) return alert("用户不存在");
+
+    const modal = openModal("编辑用户", userFormHtml({ mode: "edit", data: u }), {
+      onClose: renderAll,
+    });
+
+    $("btnCancel").onclick = () => modal.close();
+    $("btnSave").onclick = async () => {
+      try {
+        const patch = {
+          driverNumber: safe($("f_driverNumber").value),
+          displayName: safe($("f_displayName").value),
+          role: $("f_role").value,
+          isActive: $("f_active").value === "1",
+          mustChangePassword: $("f_mustChange").checked,
+          vehicleNo: safe($("f_vehicleNo").value),
+          phone: safe($("f_phone").value),
+          email: safe($("f_email").value),
+          password: safe($("f_password").value),
+        };
+
+        await Api.users.update(id, patch);
+        modal.close();
+        alert("已保存");
+      } catch (e) {
+        showApiError(e, "保存失败");
+      }
+    };
+  }
 
   async function deleteUser(id, name) {
     if (!confirm(`确定删除用户：${name || id} ?`)) return;
@@ -1004,96 +933,99 @@
   // =========================
   // CUSTOMERS UI
   // =========================
-async function renderCustomers() {
-  const wrap = $("customersTableWrap");
-  if (!wrap) return;
+  async function renderCustomers() {
+    const wrap = $("customersTableWrap");
+    if (!wrap) return;
 
-  let list;
-  try {
-    list = await Api.customers.list();
-  } catch (e) {
-    wrap.innerHTML = `<div class="empty">加载失败：${escapeHtml(
-      e.message || "error"
-    )}</div>`;
-    return;
+    let list;
+    try {
+      list = await Api.customers.list();
+    } catch (e) {
+      wrap.innerHTML = `<div class="empty">加载失败：${escapeHtml(e.message || "error")}</div>`;
+      return;
+    }
+
+    const q = lower($("custSearch")?.value);
+    let filtered = list;
+    if (q) {
+      filtered = list.filter(
+        (c) =>
+          lower(c.accountNumber).includes(q) ||
+          lower(c.accountName).includes(q) ||
+          lower(c.accountAddress).includes(q) ||
+          lower(c.city).includes(q) ||
+          lower(c.route).includes(q)
+      );
+    }
+
+    const all = filtered
+      .slice()
+      .sort((a, b) => safe(a.accountNumber).localeCompare(safe(b.accountNumber)));
+
+    if (!all.length) {
+      wrap.innerHTML = `<div class="empty">无数据</div>`;
+      return;
+    }
+
+    const total = all.length;
+    const totalPages = Math.max(1, Math.ceil(total / CUST_PAGE_SIZE));
+    custPage = Math.min(Math.max(1, custPage), totalPages);
+
+    const start = (custPage - 1) * CUST_PAGE_SIZE;
+    const pageItems = all.slice(start, start + CUST_PAGE_SIZE);
+
+    const rows = pageItems
+      .map((c) => {
+        return `
+          <tr>
+            <td>
+              <div style="font-weight:800">${escapeHtml(c.accountNumber)}</div>
+              <div class="muted" style="margin-top:6px">${escapeHtml(c.accountName)}</div>
+            </td>
+            <td class="muted">${escapeHtml(c.accountAddress || "")}</td>
+            <td class="muted">${escapeHtml(c.city || "")}</td>
+            <td class="muted">${escapeHtml(c.route || "")}</td>
+            <td style="white-space:nowrap">
+              <button class="btn secondary" data-act="cust-edit" data-id="${escapeHtml(
+                c.id
+              )}" type="button">编辑</button>
+              <button class="btn warn" data-act="cust-del" data-id="${escapeHtml(
+                c.id
+              )}" type="button">删除</button>
+            </td>
+          </tr>
+        `;
+      })
+      .join("");
+
+    wrap.innerHTML = `
+      <table class="table">
+        <thead>
+          <tr><th>Account</th><th>Address</th><th>City</th><th>Route</th><th>操作</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+
+      <div class="grid-actions" style="justify-content:flex-end; margin-top:10px">
+        <span class="muted" style="margin-right:auto">
+          Showing ${start + 1}-${Math.min(start + CUST_PAGE_SIZE, total)} of ${total}
+        </span>
+
+        <button class="btn secondary" type="button" data-act="cust-page-prev" ${
+          custPage === 1 ? "disabled" : ""
+        }>Prev</button>
+        <span class="chip">Page ${custPage} / ${totalPages}</span>
+        <button class="btn secondary" type="button" data-act="cust-page-next" ${
+          custPage === totalPages ? "disabled" : ""
+        }>Next</button>
+      </div>
+    `;
   }
-
-  const q = lower($("custSearch")?.value);
-  let filtered = list;
-  if (q) {
-    filtered = list.filter(
-      (c) =>
-        lower(c.accountNumber).includes(q) ||
-        lower(c.accountName).includes(q) ||
-        lower(c.accountAddress).includes(q) ||
-        lower(c.city).includes(q) ||
-        lower(c.route).includes(q)
-    );
-  }
-
-  const all = filtered
-    .slice()
-    .sort((a, b) => safe(a.accountNumber).localeCompare(safe(b.accountNumber)));
-
-  if (!all.length) {
-    wrap.innerHTML = `<div class="empty">无数据</div>`;
-    return;
-  }
-
-  const total = all.length;
-  const totalPages = Math.max(1, Math.ceil(total / CUST_PAGE_SIZE));
-  custPage = Math.min(Math.max(1, custPage), totalPages);
-
-  const start = (custPage - 1) * CUST_PAGE_SIZE;
-  const pageItems = all.slice(start, start + CUST_PAGE_SIZE);
-
-  const rows = pageItems
-    .map((c) => {
-      return `
-        <tr>
-          <td>
-            <div style="font-weight:800">${escapeHtml(c.accountNumber)}</div>
-            <div class="muted" style="margin-top:6px">${escapeHtml(c.accountName)}</div>
-          </td>
-          <td class="muted">${escapeHtml(c.accountAddress || "")}</td>
-          <td class="muted">${escapeHtml(c.city || "")}</td>
-          <td class="muted">${escapeHtml(c.route || "")}</td>
-          <td style="white-space:nowrap">
-            <button class="btn secondary" data-act="cust-edit" data-id="${escapeHtml(c.id)}" type="button">编辑</button>
-            <button class="btn warn" data-act="cust-del" data-id="${escapeHtml(c.id)}" type="button">删除</button>
-          </td>
-        </tr>
-      `;
-    })
-    .join("");
-
-  wrap.innerHTML = `
-    <table class="table">
-      <thead>
-        <tr><th>Account</th><th>Address</th><th>City</th><th>Route</th><th>操作</th></tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>
-
-    <div class="grid-actions" style="justify-content:flex-end; margin-top:10px">
-      <span class="muted" style="margin-right:auto">
-        Showing ${start + 1}-${Math.min(start + CUST_PAGE_SIZE, total)} of ${total}
-      </span>
-
-      <button class="btn secondary" type="button" data-act="cust-page-prev" ${
-        custPage === 1 ? "disabled" : ""
-      }>Prev</button>
-      <span class="chip">Page ${custPage} / ${totalPages}</span>
-      <button class="btn secondary" type="button" data-act="cust-page-next" ${
-        custPage === totalPages ? "disabled" : ""
-      }>Next</button>
-    </div>
-  `;
-}
 
   function customerFormHtml({ mode, data }) {
     const c = data || {};
     const isEdit = mode === "edit";
+
     return `
       <div class="row2">
         <div>
@@ -1102,9 +1034,7 @@ async function renderCustomers() {
         </div>
         <div>
           <label>Account Name</label>
-          <input id="c_name" value="${escapeHtml(
-            c.accountName || ""
-          )}" placeholder="Customer Name" />
+          <input id="c_name" value="${escapeHtml(c.accountName || "")}" placeholder="Customer Name" />
         </div>
       </div>
 
@@ -1129,89 +1059,84 @@ async function renderCustomers() {
       <div class="divider"></div>
       <div class="right-actions">
         <button class="btn secondary" id="btnCancel" type="button">Cancel</button>
-        <button class="btn ok" id="btnSave" type="button">${
-          isEdit ? "保存" : "创建"
-        }</button>
+        <button class="btn ok" id="btnSave" type="button">${isEdit ? "保存" : "创建"}</button>
       </div>
     `;
   }
 
-function openCreateCustomer() {
-  const modal = openModal(
-    "新增客户",
-    customerFormHtml({ mode: "create", data: {} }),
-    { onClose: renderAll }
-  );
+  function openCreateCustomer() {
+    const modal = openModal("新增客户", customerFormHtml({ mode: "create", data: {} }), {
+      onClose: renderAll,
+    });
 
-  $("btnCancel").onclick = () => modal.close();
-  $("btnSave").onclick = async () => {
-    try {
-      const payload = {
-        accountNumber: safe($("c_no").value),
-        accountName: safe($("c_name").value),
-        accountAddress: safe($("c_addr").value),
-        city: safe($("c_city").value),
-        route: safe($("c_route").value),
-      };
-      await Api.customers.create(payload);
-      modal.close();
-      alert("已创建");
-    } catch (e) {
-      alert(e.message || "创建失败");
-    }
-  };
-}
+    $("btnCancel").onclick = () => modal.close();
+    $("btnSave").onclick = async () => {
+      try {
+        const payload = {
+          accountNumber: safe($("c_no").value),
+          accountName: safe($("c_name").value),
+          accountAddress: safe($("c_addr").value),
+          city: safe($("c_city").value),
+          route: safe($("c_route").value),
+        };
+        await Api.customers.create(payload);
+        modal.close();
+        alert("已创建");
+      } catch (e) {
+        alert(e.message || "创建失败");
+      }
+    };
+  }
 
-async function openEditCustomer(id) {
-  const list = await Api.customers.list();
-  const c = list.find((x) => x.id === id);
-  if (!c) return alert("客户不存在");
+  async function openEditCustomer(id) {
+    const list = await Api.customers.list();
+    const c = list.find((x) => x.id === id);
+    if (!c) return alert("客户不存在");
 
-  const modal = openModal(
-    "编辑客户",
-    customerFormHtml({ mode: "edit", data: c }),
-    { onClose: renderAll }
-  );
+    const modal = openModal("编辑客户", customerFormHtml({ mode: "edit", data: c }), {
+      onClose: renderAll,
+    });
 
-  $("btnCancel").onclick = () => modal.close();
-  $("btnSave").onclick = async () => {
-    try {
-      const patch = {
-        accountNumber: safe($("c_no").value),
-        accountName: safe($("c_name").value),
-        accountAddress: safe($("c_addr").value),
-        city: safe($("c_city").value),
-        route: safe($("c_route").value),
-      };
-      await Api.customers.update(id, patch);
-      modal.close();
-      alert("已保存");
-    } catch (e) {
-      alert(e.message || "保存失败");
-    }
-  };
-}
+    $("btnCancel").onclick = () => modal.close();
+    $("btnSave").onclick = async () => {
+      try {
+        const patch = {
+          accountNumber: safe($("c_no").value),
+          accountName: safe($("c_name").value),
+          accountAddress: safe($("c_addr").value),
+          city: safe($("c_city").value),
+          route: safe($("c_route").value),
+        };
+        await Api.customers.update(id, patch);
+        modal.close();
+        alert("已保存");
+      } catch (e) {
+        alert(e.message || "保存失败");
+      }
+    };
+  }
 
   async function deleteCustomer(id) {
-  const list = await Api.customers.list();
-  const c = list.find((x) => x.id === id);
-  if (!c) return alert("客户不存在");
+    const list = await Api.customers.list();
+    const c = list.find((x) => x.id === id);
+    if (!c) return alert("客户不存在");
 
-  if (!confirm(`确定删除客户：${c.accountNumber} / ${c.accountName} ?`)) return;
+    if (!confirm(`确定删除客户：${c.accountNumber} / ${c.accountName} ?`)) return;
 
-  try {
-    await Api.customers.remove(id);
-    alert("已删除");
-    renderAll();
-  } catch (e) {
-    alert(e.message || "删除失败");
+    try {
+      await Api.customers.remove(id);
+      alert("已删除");
+      renderAll();
+    } catch (e) {
+      alert(e.message || "删除失败");
+    }
   }
-}
 
   // =========================
   // Events
   // =========================
   on($("userSearch"), "input", () => renderUsers(), { passive: true });
+
   on(
     $("custSearch"),
     "input",
@@ -1241,11 +1166,11 @@ async function openEditCustomer(id) {
   });
 
   on(document, "click", (e) => {
-  const btn = e.target?.closest?.("button[data-act]");
-  if (!btn) return;
+    const btn = e.target?.closest?.("button[data-act]");
+    if (!btn) return;
 
-  const act = btn.getAttribute("data-act");
-  console.log("clicked act =", act, btn);
+    const act = btn.getAttribute("data-act");
+    console.log("clicked act =", act, btn);
 
     if (act === "cust-page-prev") {
       custPage = Math.max(1, custPage - 1);
@@ -1262,19 +1187,16 @@ async function openEditCustomer(id) {
     }
 
     if (act === "user-del") {
-      return deleteUser(
-        btn.getAttribute("data-id"),
-        btn.getAttribute("data-name")
-      );
+      return deleteUser(btn.getAttribute("data-id"), btn.getAttribute("data-name"));
     }
 
     if (act === "cust-edit") {
-  return openEditCustomer(btn.getAttribute("data-id"));
-}
+      return openEditCustomer(btn.getAttribute("data-id"));
+    }
 
-if (act === "cust-del") {
-  return deleteCustomer(btn.getAttribute("data-id"));
-}
+    if (act === "cust-del") {
+      return deleteCustomer(btn.getAttribute("data-id"));
+    }
   });
 
   on($("btnDangerResetAll"), "click", () => {
