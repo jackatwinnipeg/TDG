@@ -12,6 +12,8 @@
 (() => {
   const SS_SESSION = "tdg_session_v1";
   const LS_USERS = "tdg_users_compat_v1";
+  const LS_SUPABASE_SESSION = "tdg_supabase_session_v1";
+  const LS_TDG_PROFILE = "tdg_auth_profile_v1";
 
   const nowIso = () => new Date().toISOString();
   const safe = (s) => String(s ?? "").trim();
@@ -49,6 +51,69 @@
     sessionStorage.removeItem(SS_SESSION);
   }
 
+  function saveSupabaseSession(session) {
+    try {
+      if (!session) {
+        localStorage.removeItem(LS_SUPABASE_SESSION);
+        return;
+      }
+
+      localStorage.setItem(
+        LS_SUPABASE_SESSION,
+        JSON.stringify({
+          access_token: session.access_token || "",
+          refresh_token: session.refresh_token || "",
+          expires_at: session.expires_at || null,
+          expires_in: session.expires_in || null,
+          token_type: session.token_type || "bearer",
+          user: session.user || null,
+        }),
+      );
+    } catch (e) {
+      console.warn("saveSupabaseSession failed:", e);
+    }
+  }
+
+  function loadSavedSupabaseSession() {
+    try {
+      return JSON.parse(localStorage.getItem(LS_SUPABASE_SESSION) || "null");
+    } catch {
+      return null;
+    }
+  }
+
+  function clearSavedSupabaseSession() {
+    try {
+      localStorage.removeItem(LS_SUPABASE_SESSION);
+    } catch {}
+  }
+
+  function saveTDGProfile(profile) {
+    try {
+      if (!profile) {
+        localStorage.removeItem(LS_TDG_PROFILE);
+        return;
+      }
+      localStorage.setItem(LS_TDG_PROFILE, JSON.stringify(profile));
+    } catch (e) {
+      console.warn("saveTDGProfile failed:", e);
+    }
+  }
+
+  function loadTDGProfile() {
+    try {
+      return JSON.parse(localStorage.getItem(LS_TDG_PROFILE) || "null");
+    } catch {
+      return null;
+    }
+  }
+
+  function clearTDGProfile() {
+    try {
+      localStorage.removeItem(LS_TDG_PROFILE);
+    } catch {}
+  }
+
   function syncProfileToLegacyLS() {
     const sess = getSession();
     if (!sess) return;
@@ -79,6 +144,64 @@
     return data;
   }
 
+  function buildTDGSession({ profile, user, session }) {
+    const loginName =
+      safe(profile?.driver_number) ||
+      safe(profile?.username) ||
+      safe(user?.email).split("@")[0];
+
+    return {
+      userId: user?.id || profile?.id || "",
+      username: loginName,
+      displayName: profile?.display_name || loginName,
+      role: profile?.role || "driver",
+      driverNumber: loginName,
+      vehicleNo: profile?.vehicle_no || "",
+      loginAt: nowIso(),
+
+      // 关键：把 token 保存进业务 session，供 app_supabase.js 恢复
+      access_token: session?.access_token || "",
+      refresh_token: session?.refresh_token || "",
+    };
+  }
+
+  async function restoreSupabaseSessionIfNeeded() {
+    const sb = getSupabaseClient();
+    if (!sb?.auth?.getSession || !sb?.auth?.setSession) return false;
+
+    try {
+      const current = await sb.auth.getSession();
+      if (current?.data?.session?.access_token) {
+        return true;
+      }
+
+      const saved = loadSavedSupabaseSession();
+      if (!saved?.access_token || !saved?.refresh_token) {
+        return false;
+      }
+
+      const { data, error } = await sb.auth.setSession({
+        access_token: saved.access_token,
+        refresh_token: saved.refresh_token,
+      });
+
+      if (error) {
+        console.warn("restoreSupabaseSessionIfNeeded:setSession failed:", error);
+        return false;
+      }
+
+      if (data?.session) {
+        saveSupabaseSession(data.session);
+        return true;
+      }
+
+      return false;
+    } catch (e) {
+      console.warn("restoreSupabaseSessionIfNeeded exception:", e);
+      return false;
+    }
+  }
+
   async function refreshSessionFromSupabase() {
     const sb = getSupabaseClient();
     if (!sb?.auth) return null;
@@ -86,7 +209,8 @@
     const { data, error } = await sb.auth.getSession();
     if (error) return null;
 
-    const user = data?.session?.user;
+    const session = data?.session;
+    const user = session?.user;
     if (!user) return null;
 
     try {
@@ -95,23 +219,19 @@
       if (profile && profile.is_active === false) {
         await sb.auth.signOut();
         clearSession();
+        clearSavedSupabaseSession();
+        clearTDGProfile();
         return null;
       }
 
-      const loginName =
-        safe(profile?.driver_number) ||
-        safe(profile?.username) ||
-        safe(user.email).split("@")[0];
+      saveSupabaseSession(session);
+      saveTDGProfile(profile);
 
-      const sess = {
-        userId: user.id,
-        username: loginName,
-        displayName: profile?.display_name || loginName,
-        role: profile?.role || "driver",
-        driverNumber: loginName,
-        vehicleNo: profile?.vehicle_no || "",
-        loginAt: nowIso(),
-      };
+      const sess = buildTDGSession({
+        profile,
+        user,
+        session,
+      });
 
       setSession(sess);
       syncProfileToLegacyLS();
@@ -141,13 +261,20 @@
 
       if (error) {
         clearSession();
+        clearSavedSupabaseSession();
+        clearTDGProfile();
         return { ok: false, msg: error.message };
       }
 
-      const userId = data?.user?.id;
-      if (!userId) {
+      const user = data?.user || data?.session?.user;
+      const session = data?.session || null;
+      const userId = user?.id;
+
+      if (!userId || !session) {
         clearSession();
-        return { ok: false, msg: "Login failed (no user id)" };
+        clearSavedSupabaseSession();
+        clearTDGProfile();
+        return { ok: false, msg: "Login failed (missing session)" };
       }
 
       const profile = await fetchProfileByUserId(userId);
@@ -155,37 +282,34 @@
       if (profile && profile.is_active === false) {
         await sb.auth.signOut();
         clearSession();
+        clearSavedSupabaseSession();
+        clearTDGProfile();
         return { ok: false, msg: "用户已停用" };
       }
 
-      const loginName =
-        safe(profile?.driver_number) ||
-        safe(profile?.username) ||
-        u;
+      saveSupabaseSession(session);
+      saveTDGProfile(profile);
 
-      const sess = {
-        userId,
-        username: loginName,
-        displayName: profile?.display_name || loginName,
-        role: profile?.role || "driver",
-        driverNumber: loginName,
-        vehicleNo: profile?.vehicle_no || "",
-        loginAt: nowIso(),
-      };
+      const sess = buildTDGSession({
+        profile,
+        user,
+        session,
+      });
 
       setSession(sess);
       syncProfileToLegacyLS();
 
-// 登录成功后：强制从云端同步客户库，并覆盖本地
-try {
-  await window.TDG_CUSTOMERS?.syncFromServer?.({ silent: true });
-} catch (e) {
-  console.warn("Customer sync after login failed:", e);
-}
+      try {
+        await window.TDG_CUSTOMERS?.syncFromServer?.({ silent: true });
+      } catch (e) {
+        console.warn("Customer sync after login failed:", e);
+      }
 
-return { ok: true, user: profile || { id: userId, username: loginName } };
+      return { ok: true, user: profile || { id: userId, username: sess.username } };
     } catch (e) {
       clearSession();
+      clearSavedSupabaseSession();
+      clearTDGProfile();
       return { ok: false, msg: "登录失败: " + (e?.message || e) };
     }
   }
@@ -217,11 +341,12 @@ return { ok: true, user: profile || { id: userId, username: loginName } };
     } catch {}
 
     clearSession();
+    clearSavedSupabaseSession();
+    clearTDGProfile();
     window.location.href = "./login.html";
   }
 
   // ===== compatibility only =====
-  // 这些函数是为了兼容旧代码保留的，新 admin.js 实际上已不依赖它们
   function getUsers() {
     try {
       return JSON.parse(localStorage.getItem(LS_USERS) || "[]");
@@ -233,7 +358,7 @@ return { ok: true, user: profile || { id: userId, username: loginName } };
   function setUsers(users) {
     localStorage.setItem(
       LS_USERS,
-      JSON.stringify(Array.isArray(users) ? users : [])
+      JSON.stringify(Array.isArray(users) ? users : []),
     );
   }
 
@@ -244,29 +369,31 @@ return { ok: true, user: profile || { id: userId, username: loginName } };
   async function sha256(text) {
     const buf = await crypto.subtle.digest(
       "SHA-256",
-      new TextEncoder().encode(String(text ?? ""))
+      new TextEncoder().encode(String(text ?? "")),
     );
     return Array.from(new Uint8Array(buf))
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
   }
 
-  (async () => {
-  try {
-    const restored = await refreshSessionFromSupabase();
-    if (restored) {
-      console.log("Session restored from Supabase");
+  async function initAuth() {
+    try {
+      await restoreSupabaseSessionIfNeeded();
 
-      try {
-        await window.TDG_CUSTOMERS?.syncFromServer?.({ silent: true });
-      } catch (e) {
-        console.warn("Customer sync after session restore failed:", e);
+      const restored = await refreshSessionFromSupabase();
+      if (restored) {
+        console.log("Session restored from Supabase");
+
+        try {
+          await window.TDG_CUSTOMERS?.syncFromServer?.({ silent: true });
+        } catch (e) {
+          console.warn("Customer sync after session restore failed:", e);
+        }
       }
+    } catch (e) {
+      console.warn("Initial session restore failed:", e);
     }
-  } catch (e) {
-    console.warn("Initial session restore failed:", e);
   }
-})();
 
   window.TDG_AUTH = {
     authenticate,
@@ -282,4 +409,6 @@ return { ok: true, user: profile || { id: userId, username: loginName } };
     ensureSeedAdmin,
     sha256,
   };
+
+  initAuth();
 })();
