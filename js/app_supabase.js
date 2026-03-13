@@ -808,7 +808,7 @@ async function loadWeekCycle() {
         const ctrl = new AbortController();
         const t = setTimeout(() => ctrl.abort(), timeoutMs);
 
-        const token = getAuthTokenSafe();
+        const token = await getAuthTokenSafe();
         const headers = { "Content-Type": "application/json" };
         if (token) headers["Authorization"] = "Bearer " + token;
 
@@ -1607,4 +1607,5 @@ window.TDG_CUSTOMERS = {
   syncFromServer: syncCustomersFromServer,
 
 };
+
 
