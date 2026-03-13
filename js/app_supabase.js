@@ -21,7 +21,6 @@ function resetAccountFieldsForNextRecord() {
     el.value = id === "deliveredVolume" ? 0 : "";
   });
 
-  // Clear search input + results
   const q = $("searchBox");
   if (q) q.value = "";
   const res = $("resultBox");
@@ -67,7 +66,6 @@ function setPill(pillId, on) {
   }
 }
 
-// Prevent iOS accidental double-tap zoom on buttons
 document.addEventListener(
   "dblclick",
   (e) => {
@@ -75,6 +73,21 @@ document.addEventListener(
   },
   { passive: false },
 );
+
+// ---------------------------
+// Local date helpers
+// ---------------------------
+function tdgLocalDate() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function tdgLocalDateTimeISO() {
+  return new Date().toISOString();
+}
 
 // ---------------------------
 // State: Arrive + Shift time
@@ -289,7 +302,7 @@ function computeRemainingTDG(base, records) {
   );
   return {
     base: base || 0,
-    totalDelivered: totalDelivered,
+    totalDelivered,
     remaining: (base || 0) - totalDelivered,
   };
 }
@@ -312,8 +325,8 @@ function seedDemoCustomers(force = false) {
       city: "Winnipeg",
       route: "R-01",
       routeType: "Local",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: tdgLocalDateTimeISO(),
+      updatedAt: tdgLocalDateTimeISO(),
     },
     {
       accountNumber: "1002",
@@ -322,8 +335,8 @@ function seedDemoCustomers(force = false) {
       city: "Winnipeg",
       route: "R-01",
       routeType: "Local",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: tdgLocalDateTimeISO(),
+      updatedAt: tdgLocalDateTimeISO(),
     },
     {
       accountNumber: "2001",
@@ -332,8 +345,8 @@ function seedDemoCustomers(force = false) {
       city: "Brandon",
       route: "R-02",
       routeType: "Highway",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: tdgLocalDateTimeISO(),
+      updatedAt: tdgLocalDateTimeISO(),
     },
     {
       accountNumber: "3007",
@@ -342,10 +355,11 @@ function seedDemoCustomers(force = false) {
       city: "Dauphin",
       route: "R-03",
       routeType: "Remote",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: tdgLocalDateTimeISO(),
+      updatedAt: tdgLocalDateTimeISO(),
     },
   ];
+
   localStorage.setItem(LS_CUSTOMERS, JSON.stringify(customers));
   toast("已加载", "演示客户库已写入本地。");
   renderResults([]);
@@ -392,11 +406,13 @@ function getFormData() {
     deliveredVolume: Number($("deliveredVolume")?.value || 0),
     notes: $("notes")?.value.trim() || "",
     done: !$("donePill")?.classList.contains("off"),
-    updatedAt: new Date().toISOString(),
+    updatedAt: tdgLocalDateTimeISO(),
   };
 }
 
 function setFormData(d) {
+  if ($("driverNumber")) $("driverNumber").value = d.driverNumber || "";
+  if ($("driverName")) $("driverName").value = d.driverName || "";
   if ($("date")) $("date").value = d.date || "";
   if ($("vehicleNo")) $("vehicleNo").value = d.vehicleNo || "";
   if ($("startKm")) $("startKm").value = d.startKm ?? "";
@@ -421,7 +437,6 @@ function setFormData(d) {
   renderArrivalUI();
 
   setPill("donePill", !!d.done);
-
   saveIndexState();
 }
 
@@ -478,7 +493,7 @@ function setCachedWeekCycleAnchor(cycle, weekStart) {
     JSON.stringify({
       cycle: Number(cycle),
       weekStart: typeof weekStart === "string" ? weekStart : formatLocalDate(weekStart),
-      cachedAt: new Date().toISOString(),
+      cachedAt: tdgLocalDateTimeISO(),
     }),
   );
 }
@@ -529,7 +544,7 @@ async function saveWeekCycleAnchorToSupabase(selectedCycle, now = new Date()) {
     owner_id: sess.userId,
     week_cycle_anchor: cycle,
     week_cycle_anchor_week_start: weekStartStr,
-    updated_at: new Date().toISOString(),
+    updated_at: tdgLocalDateTimeISO(),
   };
 
   const { error } = await sb
@@ -591,7 +606,6 @@ function loadFromProfile() {
   } catch {
     toast("错误", "无法加载用户资料");
   }
-
   saveIndexState();
 }
 
@@ -610,7 +624,6 @@ function loadFromCalendar() {
     if ($("accountAddress")) $("accountAddress").value = planned.accountAddress;
   }
   toast("已带入", "已从日历带入日期 + 计划客户（演示）。");
-
   saveIndexState();
 }
 
@@ -633,7 +646,6 @@ function loadFromYesterday() {
   } catch {
     toast("错误", "无法加载昨天记录");
   }
-
   saveIndexState();
 }
 
@@ -709,6 +721,7 @@ function renderResults(items) {
         toast("已选择客户", "已自动填充 Account / City / Route 字段。");
         if ($("accountCity")) $("accountCity").value = c.city || "";
         if ($("accountRoute")) $("accountRoute").value = c.route || c.routeType || "";
+        saveIndexState();
       },
       { passive: true },
     );
@@ -753,7 +766,7 @@ function enqueuePendingSync(payload, errorMsg) {
     const raw = localStorage.getItem(LS_PENDING_SYNC);
     const list = raw ? JSON.parse(raw) : [];
     list.push({
-      createdAt: new Date().toISOString(),
+      createdAt: tdgLocalDateTimeISO(),
       error: String(errorMsg || "unknown"),
       payload,
     });
@@ -772,7 +785,7 @@ function buildDailyPayload(reason) {
     kind: "tdg_daily_log",
     version: 1,
     reason: reason || "manual",
-    savedAt: new Date().toISOString(),
+    savedAt: tdgLocalDateTimeISO(),
     date: form.date || "",
     driver: {
       employeeNumber: sess?.username || form.driverNumber || "",
@@ -897,7 +910,7 @@ function genClientRecordId() {
 }
 
 function buildRecordRowForSupabase(rec, ownerId) {
-  const workDate = rec.date || new Date().toISOString().slice(0, 10);
+  const workDate = rec.date || tdgLocalDate();
   return {
     client_record_id: rec.clientRecordId,
     owner_id: ownerId,
@@ -911,7 +924,7 @@ function buildRecordRowForSupabase(rec, ownerId) {
     shift_finish: rec.shiftFinish || rec.shift_finish || "",
     arrived: true,
     arrival_time: rec.arrivalTime || rec.arrival_time || "",
-    completed_at: rec.completedAt || rec.completed_at || new Date().toISOString(),
+    completed_at: rec.completedAt || rec.completed_at || tdgLocalDateTimeISO(),
 
     account_number: rec.accountNumber || rec.account_number || "",
     account_name: rec.accountName || rec.account_name || "",
@@ -928,10 +941,13 @@ function buildRecordRowForSupabase(rec, ownerId) {
 
 async function syncRecordToSupabase(rec) {
   const sb = window.supabaseClient;
-  if (!sb?.auth || !sb?.from) throw new Error("Supabase client not initialized");
+  if (!sb?.auth || !sb?.from) {
+    throw new Error("Supabase client not initialized");
+  }
 
   const { data: userData, error: uErr } = await sb.auth.getUser();
-  if (uErr) throw uErr;
+  if (uErr) throw new Error("读取登录用户失败: " + uErr.message);
+
   const user = userData?.user;
   if (!user) throw new Error("Auth session missing");
 
@@ -939,14 +955,21 @@ async function syncRecordToSupabase(rec) {
 
   const row = buildRecordRowForSupabase(rec, user.id);
 
+  console.log("Uploading tdg_records row:", row);
+
   const r = await sb
     .from("tdg_records")
     .upsert(row, { onConflict: "client_record_id" })
-    .select("id")
+    .select("id, client_record_id, owner_id, work_date, account_number, account_name, created_at")
     .single();
 
-  if (r.error) throw r.error;
-  return r;
+  if (r.error) {
+    console.error("syncRecordToSupabase failed:", r.error);
+    throw new Error(r.error.message || "Supabase insert/upsert failed");
+  }
+
+  console.log("tdg_records uploaded:", r.data);
+  return r.data;
 }
 
 async function syncAllLocalRecordsToSupabase() {
@@ -955,6 +978,7 @@ async function syncAllLocalRecordsToSupabase() {
     try {
       await syncRecordToSupabase(rec);
       rec.synced = true;
+      rec.syncError = "";
     } catch (e) {
       rec.synced = false;
       rec.syncError = String(e?.message || e);
@@ -1055,7 +1079,6 @@ function confirmArrive() {
   arrivalTime = nowHHMM();
   renderArrivalUI();
   toast("到达确认", `已记录 Arrival Time：${arrivalTime}`);
-
   saveIndexState();
 }
 
@@ -1068,7 +1091,6 @@ function checkIn() {
   shiftFinish = "";
   renderShiftTime();
   toast("已 Check-in", `开始时间：${shiftStart}`);
-
   saveIndexState();
 }
 
@@ -1084,7 +1106,6 @@ function checkOut() {
   shiftFinish = nowHHMM();
   renderShiftTime();
   toast("已 Check-out", `结束时间：${shiftFinish}`);
-
   saveIndexState();
 }
 
@@ -1098,7 +1119,6 @@ function saveDraft() {
   localStorage.setItem(LS_DRAFT, JSON.stringify(d));
   saveYesterdayForDriver(getDriverKeySafe(), d);
   toast("已保存", "草稿已保存到本地。");
-
   saveIndexState();
 }
 
@@ -1106,9 +1126,12 @@ async function done() {
   if (window.__savingDone) return;
   window.__savingDone = true;
 
+  const btn = $("btnDone");
+  if (btn) btn.disabled = true;
+
   try {
     if (!isArrived) {
-      toast("请先到达确认", "请先点击 Confirm Arrive 再 Done。");
+      toast("请先到达确认", "请先点击 Confirm Arrive 再 Add Record。");
       return;
     }
 
@@ -1123,27 +1146,39 @@ async function done() {
       return;
     }
     if (!d.accountNumber || !d.accountName) {
-      toast("缺少客户信息", "请搜索并选择客户，或手动填写 Account 字段。");
+      toast("缺少客户信息", "请先搜索并选择客户，或手动填写 Account 字段。");
       return;
     }
 
     d.done = true;
-    setPill("donePill", true);
-    setStatus("已完成");
-
-    const baseTdg2 = Number($("tdgVolume")?.value || 0);
-    const cal2 = computeRemainingTDG(baseTdg2, getRecords());
-    d.remainingVolume = cal2.remaining;
-
     d.arrivalTime = arrivalTime || "";
     d.shiftStart = shiftStart || "";
     d.shiftFinish = shiftFinish || "";
-    d.completedAt = new Date().toISOString();
+    d.completedAt = tdgLocalDateTimeISO();
     d.clientRecordId = d.clientRecordId || genClientRecordId();
 
+    const baseTdg = Number($("tdgVolume")?.value || 0);
+    const cal = computeRemainingTDG(baseTdg, getRecords());
+    d.remainingVolume = cal.remaining;
+
+    toast("上传中", "正在立即上传本条记录到 Supabase...");
+
+    const remoteRow = await syncRecordToSupabase(d);
+
     const records = getRecords();
-    records.push({ ...d });
+    records.push({
+      ...d,
+      synced: true,
+      syncError: "",
+      remoteId: remoteRow?.id || null,
+    });
     setRecords(records);
+
+    setPill("donePill", true);
+    setStatus("已完成");
+    toast("上传成功", "本条记录已成功写入 Supabase。");
+
+    saveYesterdayForDriver(getDriverKeySafe(), d);
 
     resetAccountFieldsForNextRecord();
     isArrived = false;
@@ -1152,31 +1187,6 @@ async function done() {
     setPill("donePill", false);
     setPill("arrivePill", false);
     setStatus("Driving");
-
-    (async () => {
-      try {
-        await syncRecordToSupabase(d);
-        const list2 = getRecords();
-        const idx = list2.findIndex((r) => r.clientRecordId === d.clientRecordId);
-        if (idx >= 0) {
-          list2[idx].synced = true;
-          list2[idx].syncError = "";
-          setRecords(list2);
-        }
-        toast("已同步", "本次记录已保存到云端数据库。");
-      } catch (e) {
-        console.warn("syncRecordToSupabase failed:", e);
-        const msg = String(e?.message || e || "sync failed");
-        const list2 = getRecords();
-        const idx = list2.findIndex((r) => r.clientRecordId === d.clientRecordId);
-        if (idx >= 0) {
-          list2[idx].synced = false;
-          list2[idx].syncError = msg;
-          setRecords(list2);
-        }
-        toast("离线/失败", "已保存本地；Off Duty 时会自动补传。");
-      }
-    })();
 
     const next = {
       ...d,
@@ -1199,13 +1209,17 @@ async function done() {
     if (resultBox) {
       resultBox.innerHTML = `
         <h3 style="margin: 0 0 8px 0;">Search result shows here</h3>
-        <div class="muted">已保存。请搜索/填写下一个客户。</div>
+        <div class="muted">已上传成功。请搜索/填写下一个客户。</div>
       `;
     }
 
     $("accountNumber")?.focus();
+  } catch (e) {
+    console.error("Add Record immediate upload failed:", e);
+    toast("上传失败", "未成功写入 Supabase，当前记录没有提交。请检查网络或权限后重试。");
   } finally {
     window.__savingDone = false;
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -1218,6 +1232,9 @@ function resetForm() {
   shiftFinish = "";
 
   setFormData({
+    driverNumber: $("driverNumber")?.value || "",
+    driverName: $("driverName")?.value || "",
+    vehicleNo: $("vehicleNo")?.value || "",
     date: "",
     weekCycle: Number(keepCycle),
     arrived: false,
@@ -1237,21 +1254,21 @@ function resetForm() {
   }
 
   toast("已重置", "表单已清空（Week Cycle 保留）。");
-
   saveIndexState();
 }
 
 function loadDraftIfAny() {
   const raw = localStorage.getItem(LS_DRAFT);
-  if (!raw) return;
+  if (!raw) return false;
   try {
     const d = JSON.parse(raw);
     delete d.weekCycle;
     setFormData(d);
     toast("已恢复", "已从本地草稿恢复上次填写内容。");
-  } catch {}
-
-  saveIndexState();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ---------------------------
@@ -1294,8 +1311,7 @@ window.addEventListener("pageshow", () => {
    =============================== */
 
 function tdgToday() {
-  const d = new Date();
-  return d.toISOString().slice(0, 10);
+  return tdgLocalDate();
 }
 
 function tdgPullKey(driverNumber) {
@@ -1324,34 +1340,27 @@ async function pullTodayRecordsFromSupabase() {
     clientRecordId: r.client_record_id,
     driverNumber: r.driver_number,
     driverName: r.driver_name,
-
     date: r.work_date,
     vehicleNo: r.vehicle_no,
-
     weekCycle: r.week_cycle,
     shiftStart: r.shift_start,
     shiftFinish: r.shift_finish,
-
     arrivalTime: r.arrival_time,
     completedAt: r.completed_at,
-
     accountNumber: r.account_number,
     accountName: r.account_name,
     accountAddress: r.account_address,
     accountCity: r.account_city,
     accountRoute: r.account_route,
-
     tdgVolume: r.tdg_volume,
     deliveredVolume: r.delivered_volume,
-
     notes: r.notes,
-
     synced: true,
     remoteId: r.id,
   }));
 
-  localStorage.setItem("tdg_records_v3", JSON.stringify(list));
-  localStorage.removeItem("tdg_pending_sync_v1");
+  localStorage.setItem(LS_RECORDS, JSON.stringify(list));
+  localStorage.removeItem(LS_PENDING_SYNC);
 
   return list;
 }
@@ -1379,7 +1388,7 @@ async function ensureDailyPullAfterLogin() {
   console.log("TDG sync finished:", list.length);
 }
 
-/* 暴露全局函数 */
+/* exposed */
 window.TDG_SYNC = {
   ensureDailyPullAfterLogin,
   pullTodayRecordsFromSupabase,
@@ -1421,7 +1430,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   fillDriverFromSession(sess);
 
-  restoreIndexState();
+  const restored = restoreIndexState();
+
   autoLoadVolumeFromYesterday();
 
   $("btnSeedDemo")?.addEventListener("click", () => seedDemoCustomers(true));
@@ -1506,13 +1516,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   const t = new Date();
   const dateInput = $("date");
   if (dateInput && !dateInput.value) {
-    dateInput.value = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+    dateInput.value = tdgLocalDate();
   }
 
   ensureDemoProfile();
   renderShiftTime();
   renderArrivalUI();
-  loadDraftIfAny();
+
+  if (!restored) {
+    loadDraftIfAny();
+  }
 
   await loadWeekCycle();
 
@@ -1525,4 +1538,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   await syncCustomersFromServer({ silent: true });
 
   fillDriverFromSession(sess);
+
+  if (!restored) {
+    if (!$("vehicleNo")?.value) {
+      try {
+        const p = JSON.parse(localStorage.getItem(LS_PROFILE) || "{}");
+        if ($("vehicleNo") && p.vehicleNo) {
+          $("vehicleNo").value = p.vehicleNo;
+        }
+      } catch {}
+    }
+  }
+
+  saveIndexState();
 });
