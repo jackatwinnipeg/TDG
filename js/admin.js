@@ -980,14 +980,37 @@
           password: safe($("f_password").value),
         };
 
-        await Api.users.update(id, patch);
-        modal.close();
-        alert("已保存");
-      } catch (e) {
-        showApiError(e, "保存失败");
-      }
-    };
-  }
+        async update(id, patch) {
+  const u = normalizeUserPayload(
+    {
+      driverNumber: patch.driverNumber,
+      displayName: patch.displayName,
+      role: patch.role,
+      isActive: patch.isActive,
+      mustChangePassword: patch.mustChangePassword,
+      vehicleNo: patch.vehicleNo,
+      phone: patch.phone,
+      email: patch.email,
+      password: patch.password,
+    },
+    { mode: "update" }
+  );
+
+  const result = await callFn(FN.updateUser, {
+    id,
+    driverNumber: u.driverNumber,
+    displayName: u.displayName,
+    role: u.role,
+    isActive: u.isActive,
+    mustChangePassword: u.mustChangePassword,
+    vehicleNo: u.vehicleNo,
+    phone: u.phone,
+    email: u.email,
+    password: u.password,
+  });
+
+  return sanitizeUsers([result?.user || result])[0];
+}
 
   async function deleteUser(id, name) {
     if (!confirm(`确定删除用户：${name || id} ?`)) return;
