@@ -196,55 +196,71 @@
       // ---------------------------
       // Customer sync (server -> localStorage)
       // ---------------------------
-      async function syncCustomersFromServer({ silent = true } = {}) {
-        // Requires login (token) because /api/customers is protected on the server
-        const token = await getAuthTokenSafe();
-        if (!token) {
-          if (!silent) toast("未登录", "无法从服务器同步客户（需要先登录）。");
-          return { ok: false, reason: "no_token" };
-        }
+     async function syncCustomersFromServer({ silent = true } = {}) {
+  const sb = window.supabaseClient;
 
-        try {
-          const res = await fetch("/api/customers", {
-            method: "GET",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: "Bearer " + token,
-            },
-          });
+  if (!sb?.auth || !sb?.from) {
+    if (!silent) toast("同步失败", "Supabase client 未初始化。");
+    return { ok: false, reason: "supabase_not_ready" };
+  }
 
-          if (res.status === 401 || res.status === 403) {
-            if (!silent)
-              toast("无权限", "没有权限读取客户库（请检查登录/角色）。");
-            return { ok: false, reason: "unauthorized" };
-          }
+  try {
+    const { data: userData, error: userErr } = await sb.auth.getUser();
 
-          if (!res.ok) {
-            if (!silent) toast("同步失败", "服务器返回错误：" + res.status);
-            return { ok: false, reason: "http_" + res.status };
-          }
+    if (userErr) {
+      if (!silent) toast("同步失败", "读取登录状态失败：" + userErr.message);
+      return { ok: false, reason: "auth_error", message: userErr.message };
+    }
 
-          const data = await res.json().catch(() => null);
+    if (!userData?.user) {
+      if (!silent) toast("未登录", "无法从 Supabase 同步客户（需要先登录）。");
+      return { ok: false, reason: "no_session" };
+    }
 
-          // Server may return either {items:[...]} or [...]
-          const list = Array.isArray(data)
-            ? data
-            : (data && (data.items || data.customers)) || [];
-          if (!Array.isArray(list)) {
-            if (!silent) toast("同步失败", "服务器客户数据格式不正确。");
-            return { ok: false, reason: "bad_format" };
-          }
+    const { data, error } = await sb
+      .from("tdg_customers")
+      .select(`
+        account_number,
+        account_name,
+        account_address,
+        city,
+        route,
+        created_at,
+        updated_at
+      `)
+      .order("account_number", { ascending: true });
 
-          localStorage.setItem(LS_CUSTOMERS, JSON.stringify(list));
-          if (!silent)
-            toast("已同步", `已从服务器同步 ${list.length} 条客户。`);
-          return { ok: true, count: list.length };
-        } catch (e) {
-          if (!silent)
-            toast("同步失败", "网络/服务器不可用，已继续使用本地客户库。");
-          return { ok: false, reason: "network" };
-        }
-      }
+    if (error) {
+      if (!silent) toast("同步失败", "Supabase 返回错误：" + error.message);
+      return { ok: false, reason: "supabase_error", message: error.message };
+    }
+
+    const list = (data || []).map((row) => ({
+      accountNumber: row.account_number || "",
+      accountName: row.account_name || "",
+      accountAddress: row.account_address || "",
+      city: row.city || "",
+      route: row.route || "",
+      routeType: row.route || "",
+      createdAt: row.created_at || null,
+      updatedAt: row.updated_at || null,
+    }));
+
+    localStorage.setItem(LS_CUSTOMERS, JSON.stringify(list));
+
+    if (!silent) {
+      toast("已同步", `已从 Supabase 同步 ${list.length} 条客户。`);
+    }
+
+    return { ok: true, count: list.length };
+  } catch (e) {
+    const msg = String(e?.message || e || "unknown");
+    if (!silent) {
+      toast("同步失败", "网络或 Supabase 不可用，已继续使用本地客户库。");
+    }
+    return { ok: false, reason: "network", message: msg };
+  }
+}
 
       function getRecords() {
         try {
@@ -1589,4 +1605,5 @@ window.TDG_SYNC = {
 };
 window.TDG_CUSTOMERS = {
   syncFromServer: syncCustomersFromServer,
+
 };
