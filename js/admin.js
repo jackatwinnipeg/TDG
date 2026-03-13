@@ -403,110 +403,76 @@
 
   const Api = {
     users: {
-      async list() {
-        const sb = getSb();
-        const { data, error } = await sb
-          .from("tdg_profiles")
-          .select(
-            "id, username, driver_number, display_name, role, is_active, must_change_password, vehicle_no, phone, email, created_at, updated_at"
-          )
-          .order("driver_number", { ascending: true });
+  async list() {
+    const sb = getSb();
+    const { data, error } = await sb
+      .from("tdg_profiles")
+      .select(
+        "id, username, driver_number, display_name, role, is_active, must_change_password, vehicle_no, phone, email, created_at, updated_at"
+      )
+      .order("driver_number", { ascending: true });
 
-        if (error) throw error;
-        return sanitizeUsers(data || []);
+    if (error) throw error;
+    return sanitizeUsers(data || []);
+  },
+
+  async create(payload) {
+    const u = normalizeUserPayload(payload, { mode: "create" });
+    const email = canonicalEmailFromDriverNumber(u.driverNumber, u.email);
+
+    const result = await callFn(FN.createUser, {
+      username: u.driverNumber,
+      driverNumber: u.driverNumber,
+      email,
+      password: u.password,
+      displayName: u.displayName,
+      role: u.role,
+      vehicleNo: u.vehicleNo,
+      phone: u.phone,
+      isActive: u.isActive,
+      mustChangePassword: u.mustChangePassword,
+    });
+
+    return sanitizeUsers([result?.user || result])[0];
+  },
+
+  async update(id, patch) {
+    const u = normalizeUserPayload(
+      {
+        driverNumber: patch.driverNumber,
+        displayName: patch.displayName,
+        role: patch.role,
+        isActive: patch.isActive,
+        mustChangePassword: patch.mustChangePassword,
+        vehicleNo: patch.vehicleNo,
+        phone: patch.phone,
+        email: patch.email,
+        password: patch.password,
       },
+      { mode: "update" }
+    );
 
-      async create(payload) {
-        const u = normalizeUserPayload(payload, { mode: "create" });
-        const email = canonicalEmailFromDriverNumber(u.driverNumber, u.email);
+    const result = await callFn(FN.updateUser, {
+      id,
+      driverNumber: u.driverNumber,
+      displayName: u.displayName,
+      role: u.role,
+      isActive: u.isActive,
+      mustChangePassword: u.mustChangePassword,
+      vehicleNo: u.vehicleNo,
+      phone: u.phone,
+      email: u.email,
+      password: u.password,
+    });
 
-        const result = await callFn(FN.createUser, {
-          username: u.driverNumber,
-          driverNumber: u.driverNumber,
-          email,
-          password: u.password,
-          displayName: u.displayName,
-          role: u.role,
-          vehicleNo: u.vehicleNo,
-          phone: u.phone,
-          isActive: u.isActive,
-          mustChangePassword: u.mustChangePassword,
-        });
+    return sanitizeUsers([result?.user || result])[0];
+  },
 
-        return sanitizeUsers([result?.user || result])[0];
-      },
-
-      async update(id, patch) {
-  const u = normalizeUserPayload(
-    {
-      driverNumber: patch.driverNumber,
-      displayName: patch.displayName,
-      role: patch.role,
-      isActive: patch.isActive,
-      mustChangePassword: patch.mustChangePassword,
-      vehicleNo: patch.vehicleNo,
-      phone: patch.phone,
-      email: patch.email,
-      password: patch.password,
-    },
-    { mode: "update" }
-  );
-
-  const result = await callFn(FN.updateUser, {
-    id,
-    driverNumber: u.driverNumber,
-    displayName: u.displayName,
-    role: u.role,
-    isActive: u.isActive,
-    mustChangePassword: u.mustChangePassword,
-    vehicleNo: u.vehicleNo,
-    phone: u.phone,
-    email: u.email,
-    password: u.password,
-  });
-
-  return sanitizeUsers([result?.user || result])[0];
-}
-
-        const sb = getSb();
-
-        const { data, error } = await sb
-          .from("tdg_profiles")
-          .update({
-            username: u.driverNumber,
-            driver_number: u.driverNumber,
-            display_name: u.displayName,
-            role: u.role,
-            is_active: u.isActive,
-            must_change_password: u.mustChangePassword,
-            vehicle_no: u.vehicleNo,
-            phone: u.phone,
-            email: u.email,
-            updated_at: nowIso(),
-          })
-          .eq("id", id)
-          .select(
-            "id, username, driver_number, display_name, role, is_active, must_change_password, vehicle_no, phone, email, created_at, updated_at"
-          )
-          .single();
-
-        if (error) throw error;
-
-        if (u.password) {
-          await callFn(FN.resetPassword, {
-            id,
-            password: u.password,
-          });
-        }
-
-        return sanitizeUsers([data])[0];
-      },
-
-      async remove(id) {
-        await callFn(FN.deleteUser, { id });
-        return true;
-      },
-    },
+  async remove(id) {
+    await callFn(FN.deleteUser, { id });
+    return true;
+  },
+},
 
     customers: {
       async list() {
