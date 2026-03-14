@@ -50,13 +50,28 @@
   }
 
   async function getAccessToken() {
-    const session = await getSbSession();
-    const token = session?.access_token;
-    if (!token) {
-      throw new Error("登录已失效，请重新登录");
-    }
-    return token;
+  const sb = getSb();
+
+  const {
+    data: { session },
+    error: sessionError,
+  } = await sb.auth.getSession();
+
+  if (sessionError || !session?.access_token) {
+    throw new Error("登录已失效，请重新登录");
   }
+
+  const {
+    data: { user },
+    error: userError,
+  } = await sb.auth.getUser();
+
+  if (userError || !user) {
+    throw new Error("登录已失效，请重新登录");
+  }
+
+  return session.access_token;
+}
 
   function canonicalEmailFromDriverNumber(driverNumber, email = "") {
     const normalizedEmail = safe(email).toLowerCase();
@@ -65,60 +80,76 @@
   }
 
   async function callFn(name, payload, { method = "POST" } = {}) {
-  const token = await getAccessToken();
-  const base = String(window.SUPABASE_URL || "").replace(/\/+$/, "");
-  if (!base) throw new Error("SUPABASE_URL missing");
+  const sb = getSb();
 
-  const url = `${base}/functions/v1/${name}`;
+  const {
+    data: { session },
+    error: sessionError,
+  } = await sb.auth.getSession();
 
-  let res;
+  if (sessionError || !session?.access_token) {
+    throw new Error("登录已失效，请重新登录");
+  }
+
+  let data, error;
+
   try {
-    res = await fetch(url, {
-      method,
+    const result = await sb.functions.invoke(name, {
+      body: method === "GET" ? undefined : (payload ?? {}),
       headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${session.access_token}`,
       },
-      body: method === "GET" ? undefined : JSON.stringify(payload ?? {}),
     });
-  } catch {
+
+    data = result.data;
+    error = result.error;
+  } catch (e) {
     throw new Error("网络请求失败，无法连接 Edge Function");
   }
 
-  let json = null;
-  try {
-    json = await res.json();
-  } catch {
-    json = null;
+  if (error) {
+    const msg =
+      error?.context?.error ||
+      error?.message ||
+      "Edge Function 调用失败";
+
+    if (
+      msg.includes("Invalid session") ||
+      msg.includes("登录已失效") ||
+      msg.includes("Missing bearer token")
+    ) {
+      throw new Error("登录已失效，请重新登录");
+    }
+
+    if (
+      msg.includes("Only admin can update users") ||
+      msg.includes("Caller profile not found")
+    ) {
+      throw new Error("没有权限执行此操作");
+    }
+
+    throw new Error(msg);
   }
 
-  if (!res.ok) {
-    if (res.status === 401) {
-      throw new Error(json?.error || "登录已失效，请重新登录");
-    }
-    if (res.status === 403) {
-      throw new Error(json?.error || "没有权限执行此操作");
-    }
-    if (res.status === 404) {
-      throw new Error(`Edge Function ${name} 不存在或未部署`);
-    }
-    throw new Error(json?.error || `Edge Function ${name} failed (${res.status})`);
-  }
-
-  return json;
+  return data;
 }
 
   function showApiError(err, fallback = "操作失败") {
-    const msg = String(err?.message || fallback);
+  const msg = String(err?.message || fallback);
 
-    if (msg.includes("重新登录") || msg.includes("登录已失效") || msg.includes("Invalid session")) {
-      alert(msg);
-      window.location.href = "./login.html";
-      return;
-    }
-
-    alert(msg || fallback);
+  if (
+    msg.includes("重新登录") ||
+    msg.includes("登录已失效") ||
+    msg.includes("Invalid session") ||
+    msg.includes("Missing bearer token")
+  ) {
+    alert(msg);
+    window.location.href = "./login.html";
+    return;
   }
+
+  alert(msg || fallback);
+}
 
   const FN = {
     createUser: "admin-create-user",
