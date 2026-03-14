@@ -109,7 +109,7 @@
             <div class="grid4">
               <div>
                 <label for="qText">Keyword</label>
-                <input id="qText" placeholder="Acc No. / Name /" />
+                <input id="qText" placeholder="Acc No. / Name / Address / Notes" />
               </div>
 
               <div>
@@ -145,7 +145,7 @@
               </div>
               <div>
                 <label for="qVehicle">Vehicle No</label>
-                <input id="qVehicle" placeholder="" />
+                <input id="qVehicle" />
               </div>
               <div>
                 <label for="qAccNo">Account Number</label>
@@ -210,335 +210,405 @@
         </aside>
       </main>
     </div>
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="./js/supabaseConfig.js"></script>
     <script src="./js/supabaseClient.js"></script>
     <script src="./js/auth_supabase.js"></script>
+
     <script>
-      function formatLocalDateTime(v) {
-        if (!v) return "";
+      const $ = (id) => document.getElementById(id);
+      const safe = (v) => String(v ?? "").trim();
+      const norm = (v) => safe(v).toLowerCase();
+      const num = (v) => {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : 0;
+      };
 
+      const LS_HISTORY_VIEW = "tdg_history_view_v1";
+      const LS_HISTORY_VIEW_INDEX = "tdg_history_view_index_v1";
+
+      let _all = [];
+      let _filtered = [];
+      let _page = 1;
+      const PAGE_SIZE = 20;
+
+      function escapeHtml(s) {
+        return String(s ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function getSupabaseClientStrict() {
+        const sb = window.supabaseClient;
+        if (!sb?.from || !sb?.auth) {
+          throw new Error("Supabase client not initialized");
+        }
+        return sb;
+      }
+
+      function mapSupabaseRecord(r) {
+        return {
+          remoteId: r.id,
+          clientRecordId: r.client_record_id || "",
+          ownerId: r.owner_id || "",
+          driverNumber: r.driver_number || "",
+          driverName: r.driver_name || "",
+          date: r.work_date || "",
+          vehicleNo: r.vehicle_no || "",
+          weekCycle: r.week_cycle ?? "",
+          shiftStart: r.shift_start || "",
+          shiftFinish: r.shift_finish || "",
+          arrivalTime: r.arrival_time || "",
+          completedAt: r.completed_at || r.created_at || "",
+          accountNumber: r.account_number || "",
+          accountName: r.account_name || "",
+          accountAddress: r.account_address || "",
+          accountCity: r.account_city || "",
+          accountRoute: r.account_route || "",
+          tdgVolume: r.tdg_volume ?? 0,
+          deliveredVolume: r.delivered_volume ?? 0,
+          notes: r.notes || "",
+          synced: true,
+          createdAt: r.created_at || "",
+          raw: r.raw || null,
+        };
+      }
+
+      async function loadRecordsFromSupabase() {
+        const sb = getSupabaseClientStrict();
+
+        const { data, error } = await sb
+          .from("tdg_records")
+          .select(`
+            id,
+            client_record_id,
+            owner_id,
+            driver_number,
+            driver_name,
+            work_date,
+            vehicle_no,
+            week_cycle,
+            shift_start,
+            shift_finish,
+            arrival_time,
+            completed_at,
+            account_number,
+            account_name,
+            account_address,
+            account_city,
+            account_route,
+            tdg_volume,
+            delivered_volume,
+            notes,
+            raw,
+            created_at
+          `)
+          .order("created_at", { ascending: false });
+
+        if (error) {
+          console.error("loadRecordsFromSupabase error:", error);
+          throw error;
+        }
+
+        return (data || []).map(mapSupabaseRecord);
+      }
+
+      function toDateValue(v) {
+        if (!v) return null;
         const d = new Date(v);
-        if (Number.isNaN(d.getTime())) return String(v).trim();
+        return Number.isNaN(d.getTime()) ? null : d;
+      }
 
+      function fmtDateTime(v) {
+        const d = toDateValue(v);
+        if (!d) return safe(v);
         const yyyy = d.getFullYear();
         const mm = String(d.getMonth() + 1).padStart(2, "0");
         const dd = String(d.getDate()).padStart(2, "0");
         const hh = String(d.getHours()).padStart(2, "0");
         const mi = String(d.getMinutes()).padStart(2, "0");
-
         return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
       }
-    </script>
-<script>
-  const $ = (id) => document.getElementById(id);
-  const safe = (v) => String(v ?? "").trim();
-  const norm = (v) => safe(v).toLowerCase();
-  const num = (v) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : 0;
-  };
 
-  const LS_HISTORY_VIEW = "tdg_history_view_v1";
-  const LS_HISTORY_VIEW_INDEX = "tdg_history_view_index_v1";
-
-  let _all = [];
-  let _filtered = [];
-  let _page = 1;
-  const PAGE_SIZE = 20;
-
-  function getSupabaseClientStrict() {
-    const sb = window.supabaseClient;
-    if (!sb?.from || !sb?.auth) {
-      throw new Error("Supabase client not initialized");
-    }
-    return sb;
-  }
-
-  function mapSupabaseRecord(r) {
-    return {
-      remoteId: r.id,
-      clientRecordId: r.client_record_id || "",
-      ownerId: r.owner_id || "",
-      driverNumber: r.driver_number || "",
-      driverName: r.driver_name || "",
-      date: r.work_date || "",
-      vehicleNo: r.vehicle_no || "",
-      weekCycle: r.week_cycle ?? "",
-      shiftStart: r.shift_start || "",
-      shiftFinish: r.shift_finish || "",
-      arrivalTime: r.arrival_time || "",
-      completedAt: r.completed_at || r.created_at || "",
-      accountNumber: r.account_number || "",
-      accountName: r.account_name || "",
-      accountAddress: r.account_address || "",
-      accountCity: r.account_city || "",
-      accountRoute: r.account_route || "",
-      tdgVolume: r.tdg_volume ?? 0,
-      deliveredVolume: r.delivered_volume ?? 0,
-      notes: r.notes || "",
-      synced: true,
-      createdAt: r.created_at || "",
-      raw: r.raw || null,
-    };
-  }
-
-  async function loadRecordsFromSupabase() {
-    const sb = getSupabaseClientStrict();
-
-    const { data, error } = await sb
-      .from("tdg_records")
-      .select(`
-        id,
-        client_record_id,
-        owner_id,
-        driver_number,
-        driver_name,
-        work_date,
-        vehicle_no,
-        week_cycle,
-        shift_start,
-        shift_finish,
-        arrival_time,
-        completed_at,
-        account_number,
-        account_name,
-        account_address,
-        account_city,
-        account_route,
-        tdg_volume,
-        delivered_volume,
-        notes,
-        raw,
-        created_at
-      `)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("loadRecordsFromSupabase error:", error);
-      throw error;
-    }
-
-    return (data || []).map(mapSupabaseRecord);
-  }
-
-  function toDateValue(v) {
-    if (!v) return null;
-    const d = new Date(v);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-
-  function fmtDateTime(v) {
-    const d = toDateValue(v);
-    if (!d) return safe(v);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    const hh = String(d.getHours()).padStart(2, "0");
-    const mi = String(d.getMinutes()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
-  }
-
-  function getSortKey(r) {
-    return (
-      new Date(
-        r.completedAt || r.arrivalTime || r.createdAt || r.date || 0
-      ).getTime() || 0
-    );
-  }
-
-  function hideResultPanel() {
-    const panel = $("resultPanel");
-    if (panel) panel.style.display = "none";
-  }
-
-  function showResultPanel() {
-    const panel = $("resultPanel");
-    if (panel) panel.style.display = "";
-  }
-
-  function applyFilters() {
-    const qDriver = norm($("qDriver")?.value);
-    const qAccount = norm($("qAccount")?.value);
-    const qName = norm($("qName")?.value);
-    const qCity = norm($("qCity")?.value);
-    const qRoute = norm($("qRoute")?.value);
-    const qNotes = norm($("qNotes")?.value);
-    const qDateFrom = safe($("qDateFrom")?.value);
-    const qDateTo = safe($("qDateTo")?.value);
-
-    _filtered = _all.filter((r) => {
-      if (
-        qDriver &&
-        !norm(r.driverNumber).includes(qDriver) &&
-        !norm(r.driverName).includes(qDriver)
-      ) return false;
-
-      if (qAccount && !norm(r.accountNumber).includes(qAccount)) return false;
-      if (qName && !norm(r.accountName).includes(qName)) return false;
-      if (qCity && !norm(r.accountCity).includes(qCity)) return false;
-      if (qRoute && !norm(r.accountRoute).includes(qRoute)) return false;
-      if (qNotes && !norm(r.notes).includes(qNotes)) return false;
-
-      if (qDateFrom || qDateTo) {
-        const d = safe(r.date);
-        if (qDateFrom && d < qDateFrom) return false;
-        if (qDateTo && d > qDateTo) return false;
+      function getSortKey(r) {
+        return (
+          new Date(
+            r.completedAt || r.arrivalTime || r.createdAt || r.date || 0
+          ).getTime() || 0
+        );
       }
 
-      return true;
-    });
+      function hideResultPanel() {
+        const panel = $("resultPanel");
+        if (panel) panel.style.display = "none";
+      }
 
-    _filtered.sort((a, b) => getSortKey(b) - getSortKey(a));
-    _page = 1;
-    render();
-    showResultPanel();
-  }
+      function showResultPanel() {
+        const panel = $("resultPanel");
+        if (panel) panel.style.display = "";
+      }
 
-  function resetFilters() {
-    ["qDriver", "qAccount", "qName", "qCity", "qRoute", "qNotes", "qDateFrom", "qDateTo"]
-      .forEach((id) => {
-        const el = $(id);
-        if (el) el.value = "";
+      function updateCountTag(count) {
+        const el = $("countTag");
+        if (el) el.textContent = `${count} records`;
+      }
+
+      function resetFiltersToDefault(sess) {
+        if ($("qText")) $("qText").value = "";
+        if ($("qDateFrom")) $("qDateFrom").value = "";
+        if ($("qDateTo")) $("qDateTo").value = "";
+        if ($("qWeekCycle")) $("qWeekCycle").value = "";
+        if ($("qVehicle")) $("qVehicle").value = "";
+        if ($("qAccNo")) $("qAccNo").value = "";
+        if ($("qCity")) $("qCity").value = "";
+
+        const dn = safe(sess?.driverNumber || sess?.username || "");
+        if ($("qDriver")) $("qDriver").value = dn;
+      }
+
+      function applyFilters() {
+        const qText = norm($("qText")?.value);
+        const qDriver = norm($("qDriver")?.value);
+        const qVehicle = norm($("qVehicle")?.value);
+        const qAccNo = norm($("qAccNo")?.value);
+        const qCity = norm($("qCity")?.value);
+        const qWeekCycle = safe($("qWeekCycle")?.value);
+        const qDateFrom = safe($("qDateFrom")?.value);
+        const qDateTo = safe($("qDateTo")?.value);
+
+        _filtered = _all.filter((r) => {
+          if (
+            qDriver &&
+            !norm(r.driverNumber).includes(qDriver) &&
+            !norm(r.driverName).includes(qDriver)
+          ) {
+            return false;
+          }
+
+          if (qVehicle && !norm(r.vehicleNo).includes(qVehicle)) {
+            return false;
+          }
+
+          if (qAccNo && !norm(r.accountNumber).includes(qAccNo)) {
+            return false;
+          }
+
+          if (qCity && !norm(r.accountCity).includes(qCity)) {
+            return false;
+          }
+
+          if (qWeekCycle && safe(r.weekCycle) !== qWeekCycle) {
+            return false;
+          }
+
+          if (qDateFrom || qDateTo) {
+            const d = safe(r.date);
+            if (qDateFrom && d < qDateFrom) return false;
+            if (qDateTo && d > qDateTo) return false;
+          }
+
+          if (qText) {
+            const hay = [
+              r.accountNumber,
+              r.accountName,
+              r.accountAddress,
+              r.accountCity,
+              r.accountRoute,
+              r.driverNumber,
+              r.driverName,
+              r.vehicleNo,
+              r.notes,
+              r.clientRecordId,
+            ]
+              .map(norm)
+              .join(" | ");
+
+            if (!hay.includes(qText)) return false;
+          }
+
+          return true;
+        });
+
+        _filtered.sort((a, b) => getSortKey(b) - getSortKey(a));
+        _page = 1;
+        showResultPanel();
+        render();
+      }
+
+      function resetFilters() {
+        if ($("qText")) $("qText").value = "";
+        if ($("qDateFrom")) $("qDateFrom").value = "";
+        if ($("qDateTo")) $("qDateTo").value = "";
+        if ($("qWeekCycle")) $("qWeekCycle").value = "";
+        if ($("qDriver")) $("qDriver").value = "";
+        if ($("qVehicle")) $("qVehicle").value = "";
+        if ($("qAccNo")) $("qAccNo").value = "";
+        if ($("qCity")) $("qCity").value = "";
+
+        _filtered = [];
+        _page = 1;
+        showResultPanel();
+        render();
+      }
+
+      function openDetail(record) {
+        localStorage.setItem(LS_HISTORY_VIEW, JSON.stringify(record));
+        localStorage.removeItem(LS_HISTORY_VIEW_INDEX);
+
+        const url = record?.remoteId
+          ? `./history_detail.html?id=${encodeURIComponent(record.remoteId)}`
+          : "./history_detail.html";
+
+        window.location.href = url;
+      }
+
+      function render() {
+        const list = _filtered.length ? _filtered : _all;
+        const total = list.length;
+        const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+        _page = Math.min(Math.max(1, _page), totalPages);
+
+        const start = (_page - 1) * PAGE_SIZE;
+        const items = list.slice(start, start + PAGE_SIZE);
+
+        updateCountTag(total);
+
+        const pageText = $("pageText");
+        if (pageText) {
+          pageText.textContent = total
+            ? `Showing ${start + 1}-${Math.min(start + PAGE_SIZE, total)} of ${total} · Page ${_page}/${totalPages}`
+            : "No records";
+        }
+
+        if ($("btnPrev")) $("btnPrev").disabled = _page === 1;
+        if ($("btnNext")) $("btnNext").disabled = _page === totalPages;
+
+        const box = $("resultBox");
+        if (!box) return;
+
+        if (!items.length) {
+          box.innerHTML = '<div class="muted">No records.</div>';
+          return;
+        }
+
+        box.innerHTML = items
+          .map((r, idx) => {
+            const absoluteIndex = start + idx;
+            const timeText = fmtDateTime(
+              r.completedAt || r.arrivalTime || r.createdAt || r.date
+            );
+
+            return `
+              <div class="rowCard">
+                <div class="rowTop">
+                  <div>
+                    <div style="font-weight: 800; font-size: 16px;">
+                      ${escapeHtml(safe(r.accountName) || "-")}
+                    </div>
+                    <div class="muted2">
+                      ${escapeHtml(safe(r.accountAddress) || "-")}
+                    </div>
+                  </div>
+
+                  <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <button
+                      class="btn secondary"
+                      type="button"
+                      data-act="view"
+                      data-idx="${absoluteIndex}"
+                    >
+                      View Detail
+                    </button>
+                  </div>
+                </div>
+
+                <div class="kv" style="margin-top: 10px;">
+                  <span>Time: ${escapeHtml(timeText || "-")}</span>
+                  <span>Driver: ${escapeHtml(safe(r.driverName || r.driverNumber) || "-")}</span>
+                  <span>Vehicle: ${escapeHtml(safe(r.vehicleNo) || "-")}</span>
+                  <span>Acc No: ${escapeHtml(safe(r.accountNumber) || "-")}</span>
+                  <span>City: ${escapeHtml(safe(r.accountCity) || "-")}</span>
+                  <span>Route: ${escapeHtml(safe(r.accountRoute) || "-")}</span>
+                  <span>Week: ${escapeHtml(safe(r.weekCycle) || "-")}</span>
+                  <span>Delivered: ${escapeHtml(String(num(r.deliveredVolume)))}</span>
+                </div>
+
+                <div class="muted2">
+                  Notes: ${escapeHtml(safe(r.notes) || "-")}
+                </div>
+              </div>
+            `;
+          })
+          .join("");
+      }
+
+      document.addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-act='view']");
+        if (!btn) return;
+
+        const idx = Number(btn.getAttribute("data-idx"));
+        const source = _filtered.length ? _filtered : _all;
+        const record = source[idx];
+        if (!record) return;
+
+        openDetail(record);
       });
 
-    _filtered = [];
-    _page = 1;
-    hideResultPanel();
-    const tbody = $("tbody");
-    if (tbody) {
-      tbody.innerHTML = '<tr><td colspan="9" class="muted">请设置条件后点击 Search。</td></tr>';
-    }
-  }
+      document.addEventListener("DOMContentLoaded", async () => {
+        const sess = window.TDG_AUTH?.requireAuth?.();
+        if (!sess) return;
 
-  function openDetail(record) {
-    localStorage.setItem(LS_HISTORY_VIEW, JSON.stringify(record));
-    localStorage.removeItem(LS_HISTORY_VIEW_INDEX);
+        try {
+          _all = await loadRecordsFromSupabase();
+          _all.sort((a, b) => getSortKey(b) - getSortKey(a));
+          console.log("History records loaded from Supabase:", _all.length);
+        } catch (err) {
+          console.error("History load failed:", err);
+          alert("历史记录读取失败，请检查 Supabase 权限或网络。");
+          _all = [];
+        }
 
-    const url = record?.remoteId
-      ? `./history_detail.html?id=${encodeURIComponent(record.remoteId)}`
-      : "./history_detail.html";
+        resetFiltersToDefault(sess);
+        _filtered = [];
+        _page = 1;
 
-    window.location.href = url;
-  }
+        showResultPanel();
+        render();
 
-  function render() {
-    const list = _filtered.length ? _filtered : [];
-    const total = list.length;
-    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-    _page = Math.min(Math.max(1, _page), totalPages);
+        $("btnBack")?.addEventListener("click", () => {
+          window.location.href = "./index.html";
+        });
 
-    const start = (_page - 1) * PAGE_SIZE;
-    const items = list.slice(start, start + PAGE_SIZE);
+        $("btnSearch")?.addEventListener("click", applyFilters, { passive: true });
 
-    if ($("pageChip")) $("pageChip").textContent = `Page ${_page}/${totalPages}`;
-    if ($("pagerInfo")) {
-      $("pagerInfo").textContent = total
-        ? `Showing ${start + 1}-${Math.min(start + PAGE_SIZE, total)} of ${total}`
-        : "No records";
-    }
-    if ($("btnPrev")) $("btnPrev").disabled = _page === 1;
-    if ($("btnNext")) $("btnNext").disabled = _page === totalPages;
+        $("btnReset")?.addEventListener("click", () => {
+          resetFilters();
+        }, { passive: true });
 
-    const tbody = $("tbody");
-    if (!tbody) return;
+        $("btnPrev")?.addEventListener(
+          "click",
+          () => {
+            _page = Math.max(1, _page - 1);
+            render();
+          },
+          { passive: true }
+        );
 
-    if (!items.length) {
-      tbody.innerHTML = '<tr><td colspan="9" class="muted">No records.</td></tr>';
-      return;
-    }
-
-    tbody.innerHTML = items
-      .map((r, idx) => `
-        <tr>
-          <td>${fmtDateTime(r.completedAt || r.arrivalTime || r.createdAt || r.date)}</td>
-          <td>${safe(r.driverName || r.driverNumber) || "-"}</td>
-          <td>${safe(r.accountNumber) || "-"}</td>
-          <td>${safe(r.accountName) || "-"}</td>
-          <td>${safe(r.accountCity) || "-"}</td>
-          <td>${safe(r.accountRoute) || "-"}</td>
-          <td>${num(r.deliveredVolume)}</td>
-          <td>${safe(r.notes) || "-"}</td>
-          <td>
-            <button class="btn secondary" type="button" data-act="view" data-idx="${start + idx}">
-              View
-            </button>
-          </td>
-        </tr>
-      `)
-      .join("");
-  }
-
-  function exportFilteredJson() {
-    const data = _filtered.length ? _filtered : [];
-    const blob = new Blob([JSON.stringify(data, null, 2)], {
-      type: "application/json;charset=utf-8",
-    });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "tdg_history_records.json";
-    a.click();
-    URL.revokeObjectURL(a.href);
-  }
-
-  document.addEventListener("click", (e) => {
-    const btn = e.target.closest("button[data-act='view']");
-    if (!btn) return;
-
-    const idx = Number(btn.getAttribute("data-idx"));
-    const record = _filtered[idx];
-    if (!record) return;
-
-    openDetail(record);
-  });
-
-  document.addEventListener("DOMContentLoaded", async () => {
-    const sess = window.TDG_AUTH?.requireAuth?.();
-    if (!sess) return;
-
-    try {
-      _all = await loadRecordsFromSupabase();
-      console.log("History records loaded from Supabase:", _all.length);
-    } catch (err) {
-      console.error("History load failed:", err);
-      alert("历史记录读取失败，请检查 Supabase 权限或网络。");
-      _all = [];
-    }
-
-    const dn = safe(sess.driverNumber || sess.username || "");
-    if ($("qDriver") && dn) $("qDriver").value = dn;
-
-    _filtered = [];
-    _page = 1;
-    hideResultPanel();
-
-    const tbody = $("tbody");
-    if (tbody) {
-      tbody.innerHTML = '<tr><td colspan="9" class="muted">请设置条件后点击 Search。</td></tr>';
-    }
-
-    $("btnBack")?.addEventListener("click", () => {
-      window.location.href = "./index.html";
-    });
-
-    $("btnSearch")?.addEventListener("click", applyFilters, { passive: true });
-    $("btnReset")?.addEventListener("click", resetFilters, { passive: true });
-
-    const exportBtn = $("btnExportJson");
-    if (exportBtn) {
-      exportBtn.addEventListener("click", exportFilteredJson, { passive: true });
-    }
-
-    $("btnPrev")?.addEventListener("click", () => {
-      _page = Math.max(1, _page - 1);
-      render();
-    }, { passive: true });
-
-    $("btnNext")?.addEventListener("click", () => {
-      _page = _page + 1;
-      render();
-    }, { passive: true });
-  });
-</script>
+        $("btnNext")?.addEventListener(
+          "click",
+          () => {
+            const source = _filtered.length ? _filtered : _all;
+            const totalPages = Math.max(1, Math.ceil(source.length / PAGE_SIZE));
+            _page = Math.min(totalPages, _page + 1);
+            render();
+          },
+          { passive: true }
+        );
+      });
+    </script>
   </body>
 </html>
