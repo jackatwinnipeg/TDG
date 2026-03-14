@@ -15,7 +15,7 @@
 
   --line: rgba(255,255,255,.10);
   --shadow: 0 12px 36px rgba(0,0,0,.38);
-  --radius: 20px;
+  --radius: 18px;
 
   /* Accent = Linde bright blue (KEEP) */
   --accent: var(--brand-500);
@@ -25,9 +25,9 @@
   --warn:#ffd166;
   --bad:#ff6b6b;
 
-  /* --- Layout tokens --- */
-  --gap: 16px;
-  --tap: 52px;
+  /* --- Layout tokens (FIX: previously missing vars) --- */
+  --gap: 12px;
+  --tap: 48px;                 /* iPad-friendly tap target */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bot: env(safe-area-inset-bottom, 0px);
 }
@@ -36,69 +36,63 @@
 html, body { height: 100%; }
 
 html{
-  background: var(--bg);
-  font-size: 18px; /* 整体字号基础抬高 */
+  background: var(--bg);           /* 兜底，防止回弹露底色块 */
 }
 
 body{
-  min-height: 100vh;
-  margin: 0;
-  color: var(--text);
-  background-repeat: no-repeat;
-  background-size: cover;
-  background-attachment: fixed;
-  overscroll-behavior-y: none;
-  -webkit-text-size-adjust: 100%;
-  text-rendering: optimizeLegibility;
+  min-height: 100vh;               /* 确保铺满视口 */
+  background-repeat: no-repeat;    /* 防止渐变“重复”产生分界 */
+  background-size: cover;          /* 大屏/拉伸时更平滑 */
+  background-attachment: fixed;    /* 固定背景，减少拉伸时的“断层感” */
+  overscroll-behavior-y: none;     /* 可选：减少 iOS/浏览器回弹露底 */
 }
 
-/* ---------- Container ---------- */
 .container{
-  max-width: 1280px;          /* iPad 上更舒展 */
+  max-width: 1100px;
   margin: 0 auto;
-  padding: 20px 22px 28px;
+  padding: 12px 14px;
 }
 
-/* ---------- Header ---------- */
+/* ---------- Header (more "enterprise", more stable) ---------- */
 header{
   display:flex;
   align-items:center;
   justify-content:space-between;
-  gap: 16px;
-  padding: 14px 4px 18px;
+  gap: 12px;
+  padding: 10px 6px 14px;
 }
 
 .header-left{
   display:flex;
   align-items:center;
-  gap: 18px;
+  gap: 16px;
   min-width: 0;
 }
 
 .logo{
   display:block;
-  height: 112px;
+  height: 100px;               /* consistent height on iPad */
   width: auto;
-  border-radius: 10px;
+  border-radius: 8px;
 }
 
 header h1{
   margin:0;
-  font-size: 52px;
+  font-size: 45px;            /* iPad readable */
   font-weight: 800;
   letter-spacing: .3px;
-  line-height: 1.08;
+  line-height: 1.05;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
 }
 
 /* ---------- Pills / Tags ---------- */
 .tag{
-  font-size: 15px;
+  font-size: 12px;
   color: var(--muted);
   border: 1px solid rgba(255,255,255,.14);
-  padding: 10px 14px;
+  padding: 8px 12px;
   border-radius: 999px;
   background: rgba(0,0,0,.20);
   white-space: nowrap;
@@ -108,10 +102,12 @@ header h1{
   display:inline-flex;
   align-items:center;
   gap: 8px;
-  padding: 10px 14px;
+  padding: 8px 12px;
   border-radius: 999px;
-  font-size: 15px;
+  font-size: 12px;
   user-select:none;
+
+  /* keep same blue feeling */
   background: rgba(0,128,192,.14);
   border: 1px solid rgba(0,128,192,.28);
   color:#cfeaff;
@@ -125,20 +121,15 @@ header h1{
 /* ---------- Layout ---------- */
 .layout{
   display:grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(360px, 0.85fr);
-  gap: 18px;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 14px;
   align-items:start;
 }
-
-/* iPad 竖屏 / 窄一点时切单列 */
 @media (max-width: 980px){
-  .layout{
-    grid-template-columns: 1fr;
-    gap: 16px;
-  }
+  .layout{ grid-template-columns: 1fr; }
 }
 
-/* ---------- Cards ---------- */
+/* ---------- Cards (more restrained enterprise glass) ---------- */
 .card{
   background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
   border: 1px solid rgba(255,255,255,.10);
@@ -148,23 +139,21 @@ header h1{
 }
 
 .card .hd{
-  padding: 18px 20px;
+  padding: 14px;
   border-bottom: 1px solid rgba(255,255,255,.08);
   display:flex;
   align-items:center;
   justify-content:space-between;
-  gap: 14px;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
-.card .bd{
-  padding: 20px;
-}
+.card .bd{ padding: 14px; }
 
 /* ---------- Rows / Grids ---------- */
 .row{
   display:flex;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
   align-items:center;
 }
@@ -172,80 +161,42 @@ header h1{
 .grid2{
   display:grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: var(--gap);
 }
 .grid3{
   display:grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
+  gap: var(--gap);
 }
-
 @media (max-width: 720px){
-  .grid2, .grid3{
-    grid-template-columns: 1fr;
-  }
-}
-
-/* ---------- Typography ---------- */
-h2, h3, h4{
-  margin-top: 0;
-}
-
-.card .hd h2,
-.card .hd h3{
-  margin: 0;
-  font-size: 24px;
-  line-height: 1.2;
-}
-
-.result h3{
-  margin: 0 0 10px;
-  font-size: 20px;
-}
-
-.muted{
-  color: var(--muted);
-  font-size: 15px;
-  line-height: 1.55;
-}
-
-.help{
-  font-size: 15px;
-  color: var(--muted);
-  margin-top: 10px;
-  line-height: 1.55;
-}
-
-label{
-  display:block;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--muted);
-  margin: 0 0 8px;
+  .grid2, .grid3{ grid-template-columns: 1fr; }
 }
 
 /* ---------- Form controls ---------- */
+label{
+  display:block;
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+
 input, textarea, select{
   width:100%;
   min-height: var(--tap);
-  padding: 14px 16px;
-  border-radius: 16px;
+  padding: 12px 12px;
+  border-radius: 14px;
   border: 1px solid rgba(255,255,255,.12);
   background: rgba(0,0,0,.18);
   color: var(--text);
   outline: none;
-  font-size: 18px; /* iPad 输入更清晰 */
-  line-height: 1.35;
+
+  /* IMPORTANT: iOS avoid zoom if >=16px */
+  font-size: 16px;
 }
 
 textarea{
-  min-height: 140px;
+  min-height: 110px;
   resize: vertical;
-}
-
-input::placeholder,
-textarea::placeholder{
-  color: rgba(234,242,255,.52);
 }
 
 input:focus, textarea:focus, select:focus{
@@ -255,40 +206,55 @@ input:focus, textarea:focus, select:focus{
     0 10px 30px rgba(0,128,192,.10);
 }
 
+/* Disabled (clear enterprise feedback) */
 input:disabled, textarea:disabled, select:disabled{
   opacity: .55;
   cursor: not-allowed;
 }
 
-/* ---------- Divider / Result ---------- */
+/* ---------- Help / Divider / Result ---------- */
+.help{
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 8px;
+  line-height: 1.35;
+}
+
 .divider{
   height:1px;
   background: rgba(255,255,255,.10);
-  margin: 18px 0;
+  margin: 14px 0;
 }
 
 .result{
   border: 1px dashed rgba(0,128,192,.35);
-  border-radius: 18px;
-  padding: 16px;
+  border-radius: 16px;
+  padding: 12px;
   background: rgba(0,0,0,.16);
+}
+.result h3{
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.muted{
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 /* ---------- Buttons ---------- */
 .btn{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
   cursor:pointer;
   border:none;
-  border-radius: 16px;
+  border-radius: 14px;
   min-height: var(--tap);
-  padding: 12px 18px;
+  padding: 10px 14px;
   font-weight: 700;
-  font-size: 17px;
-  line-height: 1.2;
+  font-size: 15px;
   user-select:none;
   touch-action: manipulation;
+
+  /* keep your button look (no palette change) */
   background: linear-gradient(180deg, rgba(0,128,192,1) 0%, rgba(0,96,160,1) 100%);
   color: #071022;
   box-shadow: 0 10px 22px rgba(0,128,192,.20);
@@ -302,6 +268,7 @@ input:disabled, textarea:disabled, select:disabled{
   box-shadow: none;
 }
 
+/* Status buttons keep the same colors; only shadow differs */
 .btn.ok{
   background: var(--ok);
   box-shadow: 0 10px 22px rgba(85,211,138,.18);
@@ -320,24 +287,26 @@ input:disabled, textarea:disabled, select:disabled{
   cursor: not-allowed;
 }
 
+/* Arrive disabled state (requested) */
 #btnArrive:disabled{
   opacity: .60;
   cursor: not-allowed;
   filter: grayscale(.10);
 }
 
-/* ---------- WeekCycle row ---------- */
+/* ---------- WeekCycle row: never wrap (your requirement) ---------- */
 #weekCycleRow{
   display:flex;
   align-items:center;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: nowrap;
 }
 #weekCycleRow #weekCycle{
   flex: 1;
-  min-width: 140px;
+  min-width: 120px;
 }
-#weekCycle option{
+/* 下拉列表背景 */
+#weekCycle option {
   background: #001F3D;
   color: #ffffff;
 }
@@ -345,42 +314,42 @@ input:disabled, textarea:disabled, select:disabled{
 #btnCheckIn, #btnCheckOut{
   white-space: nowrap;
   flex-shrink: 0;
-  min-height: 48px;
-  padding: 10px 16px;
-  font-size: 16px;
+  min-height: 44px;           /* slightly smaller is ok */
+  padding: 10px 14px;
 }
+
+/* ---------- Bottom sticky action bar (iPad enterprise) ---------- */
+
 
 /* ---------- Toast ---------- */
 .toast{
   position: fixed;
-  right: 18px;
+  right: 14px;
   bottom: calc(96px + var(--safe-bot));
   background: rgba(18,26,51,.95);
   border: 1px solid rgba(255,255,255,.10);
   border-radius: 16px;
-  padding: 14px 16px;
-  max-width: 420px;
+  padding: 12px 14px;
+  max-width: 360px;
   box-shadow: var(--shadow);
   display: none;
   z-index: 1000;
 }
 .toast strong{
   display:block;
-  margin-bottom: 6px;
-  font-size: 16px;
+  margin-bottom: 4px;
 }
 .toast p{
   margin:0;
   color: var(--muted);
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: 12px;
+  line-height: 1.35;
 }
-
-/* ---------- Actions panel under Customer Search ---------- */
+/* --- Actions panel under Customer Search --- */
 .panel-actions{
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr)); /* iPad 两列更像企业系统 */
+  gap: 10px;
 }
 
 .panel-actions .btn{
@@ -388,79 +357,64 @@ input:disabled, textarea:disabled, select:disabled{
   justify-content: center;
 }
 
+/* iPad 横屏更宽时可四列一行（可选） */
 @media (min-width: 980px){
   .panel-actions{
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
-
-/* ---------- Button icon ---------- */
+/* Icon inside buttons: inherit color = enterprise look */
 .btn-ico{
   display:inline-flex;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   margin-right: 8px;
   align-items:center;
   justify-content:center;
 }
 .btn-ico svg{
-  width: 20px;
-  height: 20px;
-  fill: currentColor;
+  width: 18px;
+  height: 18px;
+  fill: currentColor;      /* 关键：跟随文字颜色上色 */
 }
 
+/* 如果你希望 secondary 按钮图标更“蓝一点”，但不改配色体系： */
 .btn.secondary{
-  color: var(--text);
+  color: var(--text);      /* 文字白 */
 }
+/* 只给 secondary 的图标做品牌蓝（可选） */
 .btn.secondary .btn-ico{
-  color: var(--accent);
+  color: var(--accent);    /* 用你现有的品牌蓝，不算改配色 */
 }
 
-/* ---------- Table ---------- */
-.table{
-  width:100%;
-  border-collapse: separate;
-  border-spacing: 0 10px;
-}
-
-.table thead th{
-  padding: 0 12px 8px;
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--muted);
-  white-space: nowrap;
-}
-
+/* ---------- Table polish (reduce blocky cells; keeps palette) ---------- */
+.table{ width:100%; border-collapse: separate; border-spacing: 0 8px; }
+.table thead th{ padding: 0 10px 6px; }
 .table tbody td{
-  padding: 14px 12px;
-  font-size: 16px;
-  line-height: 1.45;
   border: 1px solid rgba(255,255,255,.08);
   background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.10));
   box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 10px 26px rgba(0,0,0,.18);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
+.table tbody tr:hover td{ border-color: rgba(0,128,192,.35); }
+/* Fix Route dropdown text visibility */
 
-.table tbody tr:hover td{
-  border-color: rgba(0,128,192,.35);
-}
-
-/* ---------- Modal select ---------- */
 .modal select,
-.modal option{
+.modal option {
   color: #ffffff !important;
 }
 
-.modal option{
+/* dropdown list background */
+.modal option {
   background: #003060;
 }
 
-.modal select{
+/* selected item */
+.modal select {
   background-color: rgba(255,255,255,0.08);
 }
-
-/* ---------- TDG Print Table Column Alignment ---------- */
+/* ===== TDG Print Table Column Alignment ===== */
 table tbody td:nth-child(4),
 table thead th:nth-child(4),
 table tbody td:nth-child(5),
@@ -469,99 +423,233 @@ table tbody td:nth-child(6),
 table thead th:nth-child(6) {
   text-align: center;
 }
+/* =========================================
+   iPad ONLY override
+   追加到 style.css 最后，确保覆盖前面的样式
+   ========================================= */
 
-/* ---------- iPad 专项优化 ---------- */
-@media (min-width: 768px) and (max-width: 1366px){
-  .container{
-    max-width: 1240px;
-    padding: 22px 24px 30px;
+/* iPad 通用（横竖屏都覆盖，含大多数 iPad / iPad Air / iPad Pro） */
+@media only screen
+  and (min-device-width: 768px)
+  and (max-device-width: 1366px)
+  and (-webkit-min-device-pixel-ratio: 1) {
+
+  html {
+    font-size: 20px !important;
+    -webkit-text-size-adjust: 100%;
   }
 
-  header{
-    padding-top: 16px;
-    padding-bottom: 20px;
+  body {
+    font-size: 20px !important;
   }
 
-  header h1{
-    font-size: 50px;
+  .container {
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 24px 24px 32px !important;
   }
 
-  .card .hd{
-    padding: 18px 20px;
+  header {
+    padding: 18px 6px 22px !important;
+    gap: 18px !important;
   }
 
-  .card .bd{
-    padding: 20px;
+  .header-left {
+    gap: 20px !important;
   }
 
-  .grid2,
-  .grid3{
-    gap: 18px;
+  .logo {
+    height: 96px !important;
+    width: auto !important;
   }
 
-  .layout{
-    gap: 20px;
-  }
-
-  input, textarea, select{
-    font-size: 18px;
-    min-height: 54px;
-    padding: 14px 16px;
-  }
-
-  .btn{
-    min-height: 54px;
-    font-size: 17px;
-    padding: 12px 18px;
+  header h1 {
+    font-size: 42px !important;
+    line-height: 1.15 !important;
+    white-space: normal !important;
   }
 
   .tag,
-  .pill,
-  .help,
-  .muted,
-  label{
-    font-size: 15px;
+  .pill {
+    font-size: 17px !important;
+    padding: 12px 16px !important;
   }
 
-  .table tbody td{
-    font-size: 16px;
-    padding: 15px 12px;
+  .layout {
+    grid-template-columns: 1fr !important; /* iPad 上直接单列，更不拥挤 */
+    gap: 20px !important;
+  }
+
+  .card {
+    border-radius: 22px !important;
+  }
+
+  .card .hd {
+    padding: 20px 22px !important;
+    gap: 16px !important;
+  }
+
+  .card .bd {
+    padding: 22px !important;
+  }
+
+  .card .hd h2,
+  .card .hd h3 {
+    font-size: 28px !important;
+    line-height: 1.2 !important;
+  }
+
+  h2, h3, h4 {
+    font-size: inherit;
+  }
+
+  .muted,
+  .help,
+  label {
+    font-size: 17px !important;
+    line-height: 1.6 !important;
+  }
+
+  .row {
+    gap: 14px !important;
+  }
+
+  .grid2,
+  .grid3 {
+    grid-template-columns: 1fr !important; /* iPad 上避免左右过挤 */
+    gap: 18px !important;
+  }
+
+  input,
+  textarea,
+  select {
+    min-height: 60px !important;
+    font-size: 20px !important;
+    padding: 16px 18px !important;
+    border-radius: 18px !important;
+  }
+
+  textarea {
+    min-height: 160px !important;
+  }
+
+  .btn {
+    min-height: 60px !important;
+    font-size: 19px !important;
+    padding: 14px 20px !important;
+    border-radius: 18px !important;
+  }
+
+  #btnCheckIn,
+  #btnCheckOut,
+  #btnArrive {
+    min-height: 60px !important;
+    font-size: 18px !important;
+    padding: 14px 18px !important;
+  }
+
+  #weekCycleRow {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 14px !important;
+  }
+
+  #weekCycleRow #weekCycle {
+    width: 100% !important;
+    min-width: 100% !important;
+    flex: none !important;
+  }
+
+  .panel-actions {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 14px !important;
+  }
+
+  .table thead th {
+    font-size: 16px !important;
+    padding: 0 12px 10px !important;
+  }
+
+  .table tbody td {
+    font-size: 17px !important;
+    padding: 16px 12px !important;
+    line-height: 1.5 !important;
+  }
+
+  .result {
+    padding: 18px !important;
+    border-radius: 18px !important;
+  }
+
+  .result h3 {
+    font-size: 22px !important;
+  }
+
+  .toast {
+    right: 20px !important;
+    left: 20px !important;
+    bottom: 24px !important;
+    max-width: none !important;
+    padding: 16px 18px !important;
+  }
+
+  .toast strong {
+    font-size: 17px !important;
+  }
+
+  .toast p {
+    font-size: 16px !important;
   }
 }
 
-/* ---------- 小屏手机兜底 ---------- */
-@media (max-width: 767px){
-  html{
-    font-size: 16px;
+/* iPad 横屏再额外放宽一点 */
+@media only screen
+  and (min-device-width: 1024px)
+  and (max-device-width: 1366px)
+  and (orientation: landscape)
+  and (-webkit-min-device-pixel-ratio: 1) {
+
+  .container {
+    padding: 28px 32px 36px !important;
   }
 
-  .container{
-    padding: 14px;
+  .layout {
+    grid-template-columns: 1.15fr 0.85fr !important; /* 横屏恢复双列 */
+    gap: 24px !important;
   }
 
-  .logo{
-    height: 72px;
+  .grid2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 
-  header h1{
-    font-size: 32px;
-    white-space: normal;
+  .panel-actions {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
   }
 
-  .card .hd,
-  .card .bd{
-    padding: 14px;
+  header h1 {
+    font-size: 48px !important;
+  }
+}
+
+/* iPad 竖屏，强制更松 */
+@media only screen
+  and (min-device-width: 768px)
+  and (max-device-width: 1024px)
+  and (orientation: portrait)
+  and (-webkit-min-device-pixel-ratio: 1) {
+
+  .container {
+    padding: 22px 20px 30px !important;
   }
 
-  input, textarea, select{
-    font-size: 16px;
+  header h1 {
+    font-size: 38px !important;
   }
 
-  .btn{
-    width: 100%;
-  }
-
-  #weekCycleRow{
-    flex-wrap: wrap;
+  .layout,
+  .grid2,
+  .grid3,
+  .panel-actions {
+    grid-template-columns: 1fr !important;
   }
 }
