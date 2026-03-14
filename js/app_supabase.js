@@ -428,8 +428,8 @@ function setFormData(d) {
   if ($("deliveredVolume")) $("deliveredVolume").value = d.deliveredVolume ?? "";
   if ($("notes")) $("notes").value = d.notes || "";
 
-  shiftStart = d.shiftTimeStart || "";
-  shiftFinish = d.shiftTimeFinish || "";
+  shiftStart = d.shiftTimeStart || d.shiftStart || "";
+  shiftFinish = d.shiftTimeFinish || d.shiftFinish || "";
   renderShiftTime();
 
   isArrived = !!d.arrived;
@@ -581,7 +581,7 @@ async function loadWeekCycle() {
 }
 
 // ---------------------------
-// Simulated sources
+// Profile / user info (Supabase master)
 // ---------------------------
 function ensureDemoProfile() {
   if (localStorage.getItem(LS_PROFILE)) return;
@@ -595,15 +595,107 @@ function ensureDemoProfile() {
   );
 }
 
-function loadFromProfile() {
-  ensureDemoProfile();
+async function loadUserProfileFromSupabase() {
+  const sb = window.supabaseClient;
+  if (!sb?.auth || !sb?.from) return null;
+
+  const { data: userData, error: userErr } = await sb.auth.getUser();
+  if (userErr || !userData?.user) {
+    console.warn("loadUserProfileFromSupabase:getUser failed:", userErr);
+    return null;
+  }
+
+  const user = userData.user;
+
+  const { data: profile, error: profileErr } = await sb
+    .from("tdg_profiles")
+    .select("id, driver_number, username, display_name, vehicle_no, role, email, phone")
+    .eq("id", user.id)
+    .single();
+
+  if (profileErr || !profile) {
+    console.warn("loadUserProfileFromSupabase:profile query failed:", profileErr);
+    return null;
+  }
+
+  return {
+    id: profile.id,
+    driverNumber: profile.driver_number || profile.username || "",
+    driverName: profile.display_name || profile.username || "",
+    vehicleNo: profile.vehicle_no || "",
+    role: profile.role || "",
+    email: profile.email || "",
+    phone: profile.phone || "",
+  };
+}
+
+async function syncProfileCacheFromSupabase() {
+  const profile = await loadUserProfileFromSupabase();
+  if (!profile) return null;
+
   try {
-    const p = JSON.parse(localStorage.getItem(LS_PROFILE) || "{}");
-    if ($("driverNumber")) $("driverNumber").value = p.driverNumber || $("driverNumber").value;
-    if ($("driverName")) $("driverName").value = p.driverName || $("driverName").value;
-    if ($("vehicleNo")) $("vehicleNo").value = p.vehicleNo || $("vehicleNo").value;
-    toast("已带入", "已从用户资料带入司机/车辆信息（演示）。");
-  } catch {
+    localStorage.setItem(
+      LS_PROFILE,
+      JSON.stringify({
+        driverNumber: profile.driverNumber || "",
+        driverName: profile.driverName || "",
+        vehicleNo: profile.vehicleNo || "",
+        role: profile.role || "",
+        email: profile.email || "",
+        phone: profile.phone || "",
+        updatedAt: tdgLocalDateTimeISO(),
+      }),
+    );
+  } catch {}
+
+  return profile;
+}
+
+async function fillVehicleNoFromProfileIfNeeded(force = false) {
+  const vehicleEl = $("vehicleNo");
+  if (!vehicleEl) return "";
+
+  if (!force && vehicleEl.value.trim()) {
+    return vehicleEl.value.trim();
+  }
+
+  const profile = await syncProfileCacheFromSupabase();
+  const vehicleNo = profile?.vehicleNo || "";
+
+  if (vehicleNo) {
+    vehicleEl.value = vehicleNo;
+    saveIndexState();
+  }
+
+  return vehicleNo;
+}
+
+async function loadFromProfile() {
+  try {
+    const sess = getAuthSessionSafe();
+
+    if ($("driverNumber")) {
+      $("driverNumber").value = sess?.driverNumber || sess?.username || $("driverNumber").value || "";
+    }
+    if ($("driverName")) {
+      $("driverName").value = sess?.displayName || sess?.username || $("driverName").value || "";
+    }
+
+    const profile = await syncProfileCacheFromSupabase();
+
+    if ($("driverNumber") && profile?.driverNumber) {
+      $("driverNumber").value = profile.driverNumber;
+    }
+    if ($("driverName") && profile?.driverName) {
+      $("driverName").value = profile.driverName;
+    }
+    if ($("vehicleNo")) {
+      $("vehicleNo").value = profile?.vehicleNo || "";
+    }
+
+    toast("已带入", "已从用户资料带入司机/车辆信息。");
+  } catch (e) {
+    console.warn("loadFromProfile failed:", e);
     toast("错误", "无法加载用户资料");
   }
   saveIndexState();
@@ -1459,7 +1551,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("btnLogout")?.addEventListener("click", logoutFlow);
   $("btnRemoteBackup")?.addEventListener("click", remoteBackupFlow);
 
-  $("btnLoadProfile")?.addEventListener("click", loadFromProfile);
+  $("btnLoadProfile")?.addEventListener("click", async () => {
+    await loadFromProfile();
+  });
   $("btnLoadCalendar")?.addEventListener("click", loadFromCalendar);
   $("btnLoadYesterday")?.addEventListener("click", loadFromYesterday);
 
@@ -1513,7 +1607,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     el.addEventListener("change", scheduleSaveIndexState, { passive: true });
   });
 
-  const t = new Date();
   const dateInput = $("date");
   if (dateInput && !dateInput.value) {
     dateInput.value = tdgLocalDate();
@@ -1539,15 +1632,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   fillDriverFromSession(sess);
 
-  if (!restored) {
-    if (!$("vehicleNo")?.value) {
-      try {
-        const p = JSON.parse(localStorage.getItem(LS_PROFILE) || "{}");
-        if ($("vehicleNo") && p.vehicleNo) {
-          $("vehicleNo").value = p.vehicleNo;
-        }
-      } catch {}
-    }
+  if (!restored && !$("vehicleNo")?.value) {
+    await fillVehicleNoFromProfileIfNeeded(true);
+  } else {
+    await syncProfileCacheFromSupabase();
   }
 
   saveIndexState();
