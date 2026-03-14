@@ -26,13 +26,47 @@
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#039;");
 
-  const sess = window.TDG_AUTH?.requireAuth?.({ roles: ["admin"] });
-  if (!sess) return;
+  let currentProfile = null;
+
+async function requireAdminPageAccess() {
+  const sb = getSb();
+
+  const {
+    data: { user },
+    error: userError,
+  } = await sb.auth.getUser();
+
+  if (userError || !user) {
+    alert("登录已失效，请重新登录");
+    window.location.href = "./login.html";
+    return false;
+  }
+
+  const { data: profile, error: profileError } = await sb
+    .from("tdg_profiles")
+    .select("id, username, display_name, role")
+    .eq("id", user.id)
+    .single();
+
+  if (profileError || !profile || profile.role !== "admin") {
+    alert("没有权限访问此页面");
+    window.location.href = "./login.html";
+    return false;
+  }
+
+  currentProfile = profile;
 
   if ($("who")) {
-    $("who").textContent = `当前登录：${sess.displayName || sess.username}（${sess.role}）`;
+    $("who").textContent = `当前登录：${profile.display_name || profile.username}（${profile.role}）`;
   }
-  on($("btnLogout"), "click", () => window.TDG_AUTH.logout());
+
+  on($("btnLogout"), "click", async () => {
+    await sb.auth.signOut();
+    window.location.href = "./login.html";
+  });
+
+  return true;
+}
 
   function getSb() {
     const sb = window.supabaseClient;
@@ -1132,5 +1166,8 @@
     renderCustomers();
   }
 
-  renderAll();
-})();
+  requireAdminPageAccess().then((ok) => {
+  if (ok) {
+    renderAll();
+  }
+});
