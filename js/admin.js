@@ -65,73 +65,48 @@
   }
 
   async function callFn(name, payload, { method = "POST" } = {}) {
-    const sb = getSb();
+  const token = await getAccessToken();
+  const base = String(window.SUPABASE_URL || "").replace(/\/+$/, "");
+  if (!base) throw new Error("SUPABASE_URL missing");
 
-    if (sb.functions?.invoke && method === "POST") {
-      const { data, error } = await sb.functions.invoke(name, {
-        body: payload ?? {},
-      });
+  const url = `${base}/functions/v1/${name}`;
 
-      if (!error) return data;
-
-      const status = Number(error?.context?.status || error?.status || 0);
-      const msg = String(error?.message || "");
-
-      if (status === 404 || /non-2xx status code|not found|FunctionsHttpError/i.test(msg)) {
-        throw new Error(`Edge Function ${name} 不存在或未部署`);
-      }
-      if (status === 401) {
-        throw new Error(msg || "登录已失效，请重新登录");
-      }
-      if (status === 403) {
-        throw new Error(msg || "没有权限执行此操作");
-      }
-
-      throw new Error(msg || `Edge Function ${name} 调用失败`);
-    }
-
-    const token = await getAccessToken();
-    const base = String(window.SUPABASE_URL || "").replace(/\/+$/, "");
-    if (!base) throw new Error("SUPABASE_URL missing");
-
-    const url = `${base}/functions/v1/${name}`;
-
-    let res;
-    try {
-      res = await fetch(url, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: method === "GET" ? undefined : JSON.stringify(payload ?? {}),
-      });
-    } catch {
-      throw new Error("网络请求失败，无法连接 Edge Function");
-    }
-
-    let json = null;
-    try {
-      json = await res.json();
-    } catch {
-      json = null;
-    }
-
-    if (!res.ok) {
-      if (res.status === 401) {
-        throw new Error(json?.error || "登录已失效，请重新登录");
-      }
-      if (res.status === 403) {
-        throw new Error(json?.error || "没有权限执行此操作");
-      }
-      if (res.status === 404) {
-        throw new Error(`Edge Function ${name} 不存在或未部署`);
-      }
-      throw new Error(json?.error || `Edge Function ${name} failed (${res.status})`);
-    }
-
-    return json;
+  let res;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: method === "GET" ? undefined : JSON.stringify(payload ?? {}),
+    });
+  } catch {
+    throw new Error("网络请求失败，无法连接 Edge Function");
   }
+
+  let json = null;
+  try {
+    json = await res.json();
+  } catch {
+    json = null;
+  }
+
+  if (!res.ok) {
+    if (res.status === 401) {
+      throw new Error(json?.error || "登录已失效，请重新登录");
+    }
+    if (res.status === 403) {
+      throw new Error(json?.error || "没有权限执行此操作");
+    }
+    if (res.status === 404) {
+      throw new Error(`Edge Function ${name} 不存在或未部署`);
+    }
+    throw new Error(json?.error || `Edge Function ${name} failed (${res.status})`);
+  }
+
+  return json;
+}
 
   function showApiError(err, fallback = "操作失败") {
     const msg = String(err?.message || fallback);
