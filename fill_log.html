@@ -3,7 +3,6 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
     <title>CO2 Fill Log</title>
 
     <style>
@@ -27,7 +26,6 @@
         color: var(--ink);
       }
 
-      /* 打印纸 */
       @page {
         size: Letter;
         margin: 0.5in;
@@ -37,25 +35,17 @@
         width: 8.5in;
         height: 10in;
         margin: auto;
-
         background: var(--paper);
-
         border: 1.5px solid var(--line);
-
         padding: 0.35in 0.4in;
-
         overflow: hidden;
       }
-
-      /* 标题 */
 
       .header {
         display: flex;
         justify-content: space-between;
         align-items: flex-end;
-
         border-bottom: 2px solid var(--line);
-
         padding-bottom: 8px;
         margin-bottom: 10px;
       }
@@ -70,8 +60,6 @@
         font-size: 12px;
         color: var(--muted);
       }
-
-      /* 表头区域 */
 
       .profile-box {
         margin-bottom: 10px;
@@ -102,7 +90,7 @@
         font-size: 12px;
         line-height: 1;
         margin-bottom: 3px;
-        text-align: left; /* 修复标签文字被居中对齐的问题 */
+        text-align: left;
       }
 
       .cell-input {
@@ -115,7 +103,7 @@
         padding: 0;
         margin: 0;
         color: #111;
-        text-align: center; /* 默认居中对齐输入内容 */
+        text-align: center;
         font-weight: 700;
       }
 
@@ -123,14 +111,10 @@
         cursor: default;
       }
 
-      /* 表格 */
-
       .section-title {
         font-size: 12px;
         font-weight: 700;
-
         border-bottom: 1.5px solid var(--line);
-
         margin: 10px 0 6px;
         padding-bottom: 3px;
       }
@@ -143,13 +127,9 @@
       th,
       td {
         border: 1px solid var(--line);
-
         height: 28px;
-
         padding: 4px 6px;
-
         font-size: 12px;
-
         text-align: center;
         vertical-align: middle;
       }
@@ -159,12 +139,9 @@
         font-weight: 700;
       }
 
-      /* 按钮 */
-
       .actions {
         width: 8.5in;
         margin: 14px auto 0;
-
         display: flex;
         gap: 10px;
         justify-content: flex-end;
@@ -174,10 +151,8 @@
         border: 1px solid #111;
         background: #111;
         color: #fff;
-
         padding: 8px 14px;
         font-size: 14px;
-
         cursor: pointer;
       }
 
@@ -185,8 +160,6 @@
         background: #fff;
         color: #111;
       }
-
-      /* 打印 */
 
       @media print {
         body {
@@ -211,7 +184,6 @@
     <div class="sheet">
       <header class="header">
         <h1>Fill Log CO₂</h1>
-
         <div class="header-meta">Linde Canada Inc.</div>
       </header>
 
@@ -258,22 +230,23 @@
         <thead>
           <tr>
             <th style="width: 25%">Date</th>
-
             <th style="width: 25%">Amount</th>
-
             <th style="width: 50%">Notes</th>
           </tr>
         </thead>
-
         <tbody id="logBody"></tbody>
       </table>
     </div>
 
     <div class="actions">
-      <button class="btn secondary" id="saveBtn">Save</button>
-
-      <button class="btn" onclick="window.print()">Print</button>
+      <button class="btn secondary" id="saveBtn" type="button">Save</button>
+      <button class="btn" type="button" onclick="window.print()">Print</button>
     </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="./js/supabaseConfig.js"></script>
+    <script src="./js/supabaseClient.js"></script>
+    <script src="./js/auth_supabase.js"></script>
 
     <script>
       const LS_RECORDS = "tdg_records_v3";
@@ -287,6 +260,11 @@
         return String(v ?? "").trim();
       }
 
+      function num(v) {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : 0;
+      }
+
       function readCurrent() {
         try {
           return JSON.parse(localStorage.getItem(LS_FILL));
@@ -295,7 +273,7 @@
         }
       }
 
-      function loadRecords() {
+      function loadLocalRecords() {
         try {
           return JSON.parse(localStorage.getItem(LS_RECORDS) || "[]");
         } catch {
@@ -303,21 +281,102 @@
         }
       }
 
+      function getSupabaseClientStrict() {
+        const sb = window.supabaseClient;
+        if (!sb?.from || !sb?.auth) {
+          throw new Error("Supabase client not initialized");
+        }
+        return sb;
+      }
+
+      function mapSupabaseRecord(r) {
+        return {
+          remoteId: r.id,
+          clientRecordId: r.client_record_id || "",
+          ownerId: r.owner_id || "",
+          driverNumber: r.driver_number || "",
+          driverName: r.driver_name || "",
+          date: r.work_date || "",
+          vehicleNo: r.vehicle_no || "",
+          weekCycle: r.week_cycle ?? "",
+          shiftStart: r.shift_start || "",
+          shiftFinish: r.shift_finish || "",
+          arrivalTime: r.arrival_time || "",
+          completedAt: r.completed_at || "",
+          accountNumber: r.account_number || "",
+          accountName: r.account_name || "",
+          accountAddress: r.account_address || "",
+          accountCity: r.account_city || "",
+          accountRoute: r.account_route || "",
+          tdgVolume: r.tdg_volume ?? 0,
+          deliveredVolume: r.delivered_volume ?? 0,
+          notes: r.notes || "",
+          createdAt: r.created_at || "",
+          raw: r.raw || null,
+        };
+      }
+
+      async function loadAccountRecordsFromSupabase(accountNumber) {
+        const acct = safe(accountNumber);
+        if (!acct) return [];
+
+        const sb = getSupabaseClientStrict();
+        const { data, error } = await sb
+          .from("tdg_records")
+          .select(`
+            id,
+            client_record_id,
+            owner_id,
+            driver_number,
+            driver_name,
+            work_date,
+            vehicle_no,
+            week_cycle,
+            shift_start,
+            shift_finish,
+            arrival_time,
+            completed_at,
+            account_number,
+            account_name,
+            account_address,
+            account_city,
+            account_route,
+            tdg_volume,
+            delivered_volume,
+            notes,
+            raw,
+            created_at
+          `)
+          .eq("account_number", acct)
+          .order("created_at", { ascending: false });
+
+        if (error) {
+          console.error("loadAccountRecordsFromSupabase error:", error);
+          throw error;
+        }
+
+        return (data || []).map(mapSupabaseRecord);
+      }
+
       function toDateValue(v) {
         if (!v) return null;
-        const d = new Date(v);
+        const s = String(v).trim();
+        if (!s) return null;
+
+        if (/^\d{1,2}:\d{2}$/.test(s)) return null;
+
+        const d = new Date(s);
         return Number.isNaN(d.getTime()) ? null : d;
       }
 
       function formatDate(v) {
-        if (!v) return "";
-        const s = String(v).trim();
+        const s = safe(v);
         if (!s) return "";
 
         if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
 
         const d = toDateValue(s);
-        if (!d) return s;
+        if (!d) return "";
 
         const yyyy = d.getFullYear();
         const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -325,33 +384,62 @@
         return `${yyyy}-${mm}-${dd}`;
       }
 
+      function formatTime(v) {
+        const s = safe(v);
+        if (!s) return "";
+
+        if (/^\d{1,2}:\d{2}$/.test(s)) {
+          const [h, m] = s.split(":");
+          return `${String(h).padStart(2, "0")}:${m}`;
+        }
+
+        const d = toDateValue(s);
+        if (!d) return "";
+
+        const hh = String(d.getHours()).padStart(2, "0");
+        const mm = String(d.getMinutes()).padStart(2, "0");
+        return `${hh}:${mm}`;
+      }
+
       function getSortTime(rec) {
         const d =
-          toDateValue(rec.createdAt) ||
-          toDateValue(rec.updatedAt) ||
           toDateValue(rec.completedAt) ||
-          toDateValue(rec.arrivedAt) ||
+          toDateValue(rec.createdAt) ||
           toDateValue(rec.date);
 
         return d ? d.getTime() : 0;
       }
 
       function getDisplayDate(rec) {
-        return formatDate(
-          rec.date ??
-            rec.completedAt ??
-            rec.arrivedAt ??
-            rec.createdAt ??
-            rec.updatedAt ??
-            "",
-        );
+        const completed = safe(rec.completedAt);
+        const created = safe(rec.createdAt);
+        const dateOnly = safe(rec.date);
+
+        if (completed && toDateValue(completed)) return formatDate(completed);
+        if (created && toDateValue(created)) return formatDate(created);
+        if (dateOnly) return formatDate(dateOnly) || dateOnly;
+
+        return "";
+      }
+
+      function getDisplayAmount(rec) {
+        return String(num(rec.deliveredVolume ?? rec.delivered ?? 0));
+      }
+
+      function getDisplayNotes(rec) {
+        const notes = safe(rec.notes || rec.note || "");
+        const t = formatTime(rec.arrivalTime);
+
+        if (notes && t) return `${t} ${notes}`;
+        if (t) return t;
+        return notes;
       }
 
       function fillHeader(r) {
         $("accountName").value = safe(r.accountName);
         $("accountNumber").value = safe(r.accountNumber);
 
-        const addr = [r.accountAddress, r.accountCity]
+        const addr = [safe(r.accountAddress), safe(r.accountCity)]
           .filter(Boolean)
           .join(", ");
         $("address").value = addr;
@@ -359,50 +447,78 @@
 
       function createRow(date, amount, notes) {
         const tr = document.createElement("tr");
-
-        tr.innerHTML = `<td>${date ?? ""}</td>
-<td>${amount ?? ""}</td>
-<td>${notes ?? ""}</td>`;
-
+        tr.innerHTML = `
+          <td>${safe(date)}</td>
+          <td>${safe(amount)}</td>
+          <td>${safe(notes)}</td>
+        `;
         return tr;
       }
 
-      function fillTable(r) {
-        const rows = loadRecords()
-          .filter((x) => safe(x.accountNumber) === safe(r.accountNumber))
-          .sort((a, b) => getSortTime(b) - getSortTime(a));
+      async function getRowsForAccount(r) {
+        const acct = safe(r?.accountNumber);
+        if (!acct) return [];
 
+        try {
+          const remoteRows = await loadAccountRecordsFromSupabase(acct);
+          if (remoteRows.length) return remoteRows;
+        } catch (err) {
+          console.warn("Supabase rows load failed, fallback to local:", err);
+        }
+
+        return loadLocalRecords()
+          .filter((x) => safe(x.accountNumber) === acct)
+          .sort((a, b) => getSortTime(b) - getSortTime(a));
+      }
+
+      async function fillTable(r) {
+        const rows = await getRowsForAccount(r);
         const tbody = $("logBody");
         tbody.innerHTML = "";
 
         const maxRows = 14;
+        const sortedRows = [...rows].sort((a, b) => getSortTime(b) - getSortTime(a));
 
-        for (let i = 0; i < Math.min(rows.length, maxRows); i++) {
-          const rec = rows[i];
-
+        for (let i = 0; i < Math.min(sortedRows.length, maxRows); i++) {
+          const rec = sortedRows[i];
           tbody.appendChild(
             createRow(
               getDisplayDate(rec),
-              rec.delivered ?? rec.deliveredVolume ?? "",
-              rec.notes ?? "",
-            ),
+              getDisplayAmount(rec),
+              getDisplayNotes(rec)
+            )
           );
         }
 
-        for (let i = rows.length; i < maxRows; i++) {
+        for (let i = sortedRows.length; i < maxRows; i++) {
           tbody.appendChild(createRow("", "", ""));
         }
       }
 
-      function init() {
+      function saveHeaderDraft() {
+        const current = readCurrent() || {};
+        current.tankSize = safe($("tankSize").value);
+        current.fillBoxLocation = safe($("fillBoxLocation").value);
+        current.gasPartNumber = safe($("gasPartNumber").value);
+        localStorage.setItem(LS_FILL, JSON.stringify(current));
+        alert("Saved.");
+      }
+
+      async function init() {
         const r = readCurrent();
         if (!r) return;
 
         fillHeader(r);
-        fillTable(r);
+
+        $("tankSize").value = safe(r.tankSize);
+        $("fillBoxLocation").value = safe(r.fillBoxLocation);
+        $("gasPartNumber").value = safe(r.gasPartNumber || "CD BEVBULK");
+
+        await fillTable(r);
       }
 
       window.addEventListener("load", init);
+      $("saveBtn").addEventListener("click", saveHeaderDraft);
     </script>
   </body>
 </html>
