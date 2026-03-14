@@ -230,272 +230,315 @@
         return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
       }
     </script>
-    <script>
-      const $ = (id) => document.getElementById(id);
-      function showResultPanel() {
-        const el = $("resultPanel");
-        if (el) el.style.display = "";
+<script>
+  const $ = (id) => document.getElementById(id);
+  const safe = (v) => String(v ?? "").trim();
+  const norm = (v) => safe(v).toLowerCase();
+  const num = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const LS_HISTORY_VIEW = "tdg_history_view_v1";
+  const LS_HISTORY_VIEW_INDEX = "tdg_history_view_index_v1";
+
+  let _all = [];
+  let _filtered = [];
+  let _page = 1;
+  const PAGE_SIZE = 20;
+
+  function getSupabaseClientStrict() {
+    const sb = window.supabaseClient;
+    if (!sb?.from || !sb?.auth) {
+      throw new Error("Supabase client not initialized");
+    }
+    return sb;
+  }
+
+  function mapSupabaseRecord(r) {
+    return {
+      remoteId: r.id,
+      clientRecordId: r.client_record_id || "",
+      ownerId: r.owner_id || "",
+      driverNumber: r.driver_number || "",
+      driverName: r.driver_name || "",
+      date: r.work_date || "",
+      vehicleNo: r.vehicle_no || "",
+      weekCycle: r.week_cycle ?? "",
+      shiftStart: r.shift_start || "",
+      shiftFinish: r.shift_finish || "",
+      arrivalTime: r.arrival_time || "",
+      completedAt: r.completed_at || r.created_at || "",
+      accountNumber: r.account_number || "",
+      accountName: r.account_name || "",
+      accountAddress: r.account_address || "",
+      accountCity: r.account_city || "",
+      accountRoute: r.account_route || "",
+      tdgVolume: r.tdg_volume ?? 0,
+      deliveredVolume: r.delivered_volume ?? 0,
+      notes: r.notes || "",
+      synced: true,
+      createdAt: r.created_at || "",
+      raw: r.raw || null,
+    };
+  }
+
+  async function loadRecordsFromSupabase() {
+    const sb = getSupabaseClientStrict();
+
+    const { data, error } = await sb
+      .from("tdg_records")
+      .select(`
+        id,
+        client_record_id,
+        owner_id,
+        driver_number,
+        driver_name,
+        work_date,
+        vehicle_no,
+        week_cycle,
+        shift_start,
+        shift_finish,
+        arrival_time,
+        completed_at,
+        account_number,
+        account_name,
+        account_address,
+        account_city,
+        account_route,
+        tdg_volume,
+        delivered_volume,
+        notes,
+        raw,
+        created_at
+      `)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("loadRecordsFromSupabase error:", error);
+      throw error;
+    }
+
+    return (data || []).map(mapSupabaseRecord);
+  }
+
+  function toDateValue(v) {
+    if (!v) return null;
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  function fmtDateTime(v) {
+    const d = toDateValue(v);
+    if (!d) return safe(v);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mi = String(d.getMinutes()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+  }
+
+  function getSortKey(r) {
+    return (
+      new Date(
+        r.completedAt || r.arrivalTime || r.createdAt || r.date || 0
+      ).getTime() || 0
+    );
+  }
+
+  function hideResultPanel() {
+    const panel = $("resultPanel");
+    if (panel) panel.style.display = "none";
+  }
+
+  function showResultPanel() {
+    const panel = $("resultPanel");
+    if (panel) panel.style.display = "";
+  }
+
+  function applyFilters() {
+    const qDriver = norm($("qDriver")?.value);
+    const qAccount = norm($("qAccount")?.value);
+    const qName = norm($("qName")?.value);
+    const qCity = norm($("qCity")?.value);
+    const qRoute = norm($("qRoute")?.value);
+    const qNotes = norm($("qNotes")?.value);
+    const qDateFrom = safe($("qDateFrom")?.value);
+    const qDateTo = safe($("qDateTo")?.value);
+
+    _filtered = _all.filter((r) => {
+      if (
+        qDriver &&
+        !norm(r.driverNumber).includes(qDriver) &&
+        !norm(r.driverName).includes(qDriver)
+      ) return false;
+
+      if (qAccount && !norm(r.accountNumber).includes(qAccount)) return false;
+      if (qName && !norm(r.accountName).includes(qName)) return false;
+      if (qCity && !norm(r.accountCity).includes(qCity)) return false;
+      if (qRoute && !norm(r.accountRoute).includes(qRoute)) return false;
+      if (qNotes && !norm(r.notes).includes(qNotes)) return false;
+
+      if (qDateFrom || qDateTo) {
+        const d = safe(r.date);
+        if (qDateFrom && d < qDateFrom) return false;
+        if (qDateTo && d > qDateTo) return false;
       }
 
-      function hideResultPanel() {
-        const el = $("resultPanel");
-        if (el) el.style.display = "none";
-        if ($("pageText")) $("pageText").textContent = "—";
-      }
+      return true;
+    });
 
-      const LS_RECORDS = "tdg_records_v3";
+    _filtered.sort((a, b) => getSortKey(b) - getSortKey(a));
+    _page = 1;
+    render();
+    showResultPanel();
+  }
 
-      const PAGE_SIZE = 10;
-      let _all = [];
-      let _filtered = [];
-      let _page = 1;
-
-      function escapeHtml(s) {
-        return String(s ?? "")
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;")
-          .replace(/'/g, "&#039;");
-      }
-
-      function loadRecords() {
-        try {
-          const raw = localStorage.getItem(LS_RECORDS) || "[]";
-          const arr = JSON.parse(raw);
-          return Array.isArray(arr) ? arr : [];
-        } catch {
-          return [];
-        }
-      }
-
-      function yyyyMmDdToNum(s) {
-        if (!s) return null;
-        const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-        if (!m) return null;
-        return Number(m[1]) * 10000 + Number(m[2]) * 100 + Number(m[3]);
-      }
-
-      function norm(s) {
-        return String(s || "")
-          .trim()
-          .toLowerCase();
-      }
-
-      function applyFilters() {
-        const qText = norm($("qText")?.value);
-        const qDateFrom = yyyyMmDdToNum($("qDateFrom")?.value);
-        const qDateTo = yyyyMmDdToNum($("qDateTo")?.value);
-        const qWeekCycle = $("qWeekCycle")?.value || "";
-
-        const qDriver = norm($("qDriver")?.value);
-        const qVehicle = norm($("qVehicle")?.value);
-        const qAccNo = norm($("qAccNo")?.value);
-        const qCity = norm($("qCity")?.value);
-
-        const out = _all.filter((r) => {
-          const dateNum = yyyyMmDdToNum(r.date);
-          if (qDateFrom != null && (dateNum == null || dateNum < qDateFrom))
-            return false;
-          if (qDateTo != null && (dateNum == null || dateNum > qDateTo))
-            return false;
-
-          if (qWeekCycle && String(r.weekCycle || "") !== String(qWeekCycle))
-            return false;
-
-          if (
-            qDriver &&
-            !norm(r.driverNumber).includes(qDriver) &&
-            !norm(r.driverName).includes(qDriver)
-          )
-            return false;
-
-          if (qVehicle && !norm(r.vehicleNo).includes(qVehicle)) return false;
-          if (qAccNo && !norm(r.accountNumber).includes(qAccNo)) return false;
-          if (qCity && !norm(r.accountCity).includes(qCity)) return false;
-
-          if (qText) {
-            const hay = [
-              r.accountNumber,
-              r.accountName,
-              r.accountAddress,
-              r.accountCity,
-              r.accountRoute,
-              r.notes,
-              r.vehicleNo,
-              r.driverNumber,
-              r.driverName,
-            ]
-              .map(norm)
-              .join(" | ");
-            if (!hay.includes(qText)) return false;
-          }
-
-          return true;
-        });
-
-        // 最新的排前（completedAt/updatedAt/date）
-        out.sort((a, b) => {
-          const ta =
-            Date.parse(a.completedAt || a.updatedAt || a.date || "") || 0;
-          const tb =
-            Date.parse(b.completedAt || b.updatedAt || b.date || "") || 0;
-          return tb - ta;
-        });
-
-        _filtered = out;
-        _page = 1;
-        showResultPanel();
-        render();
-      }
-
-      function render() {
-        const box = $("resultBox");
-        const countTag = $("countTag");
-        if (countTag) countTag.textContent = `${_filtered.length} records`;
-
-        if (!box) return;
-
-        if (!_filtered.length) {
-          box.innerHTML = `
-            <h3 style="margin:0 0 8px 0;">No result</h3>
-            <div class="muted">没有匹配到记录。</div>
-          `;
-          $("pageText").textContent = "page 0/0";
-          return;
-        }
-
-        const totalPages = Math.ceil(_filtered.length / PAGE_SIZE);
-        if (_page < 1) _page = 1;
-        if (_page > totalPages) _page = totalPages;
-
-        const start = (_page - 1) * PAGE_SIZE;
-        const items = _filtered.slice(start, start + PAGE_SIZE);
-
-        $("pageText").textContent =
-          `page ${_page}/${totalPages} · showing ${start + 1}-${Math.min(start + PAGE_SIZE, _filtered.length)}`;
-
-        const rows = items
-          .map((r, i) => {
-            const when = formatLocalDateTime(
-              r.completedAt || r.updatedAt || "",
-            );
-            const delivered = Number(r.deliveredVolume || 0);
-            const tdg = Number(r.tdgVolume || 0);
-            return `
-            <div class="rowCard history-item" data-index="${start + i}">
-              <div class="rowTop">
-                <div style="min-width:240px;">
-                  <div style="font-weight:800; font-size:14px;">
-                    ${escapeHtml(r.accountName || "(no account name)")}
-                  </div>
-                  <div class="muted2">
-                    ACC <span class="mono">${escapeHtml(r.accountNumber || "")}</span>
-                    · ${escapeHtml(r.accountCity || "")}
-                    · ${escapeHtml(r.accountRoute || "")}
-                  </div>
-                  <div class="muted2">${escapeHtml(r.accountAddress || "")}</div>
-                </div>
-
-                <div class="kv">
-                  <span>${escapeHtml(r.date || "—")}</span>
-                  <span>Cycle ${escapeHtml(r.weekCycle ?? "—")}</span>
-                  <span>Vehicle ${escapeHtml(r.vehicleNo || "—")}</span>
-                  <span>Delivered ${escapeHtml(delivered)}</span>
-                  <span>Arrive ${escapeHtml(r.arrivalTime || "—")}</span>
-                </div>
-              </div>
-
-              <div class="muted2" style="margin-top:10px;">
-                Driver: <span class="mono">${escapeHtml(r.driverNumber || "")}</span>
-                ${escapeHtml(r.driverName || "")}
-                ${when ? `· <span class="mono">${escapeHtml(when)}</span>` : ""}
-              </div>
-
-              ${r.notes ? `<div class="muted2">Notes: ${escapeHtml(r.notes)}</div>` : ""}
-            </div>
-          `;
-          })
-          .join("");
-
-        box.innerHTML = rows;
-        document.querySelectorAll(".history-item").forEach((el) => {
-          el.addEventListener("click", () => {
-            const idx = Number(el.dataset.index);
-            const rec = _filtered[idx];
-
-            localStorage.setItem(
-              "tdg_history_view_v1",
-              JSON.stringify(rec || null),
-            );
-
-            window.location.href = "./history_detail.html";
-          });
-        });
-
-        $("btnPrev").disabled = _page <= 1;
-        $("btnNext").disabled = _page >= totalPages;
-      }
-
-      function resetFilters() {
-        $("qText").value = "";
-        $("qDateFrom").value = "";
-        $("qDateTo").value = "";
-        $("qWeekCycle").value = "";
-        $("qVehicle").value = "";
-        $("qAccNo").value = "";
-        $("qCity").value = "";
-
-        // driver 默认保留当前登录司机（更符合使用场景）
-        applyFilters();
-      }
-
-      document.addEventListener("DOMContentLoaded", () => {
-        // Auth gate
-        const sess = window.TDG_AUTH?.requireAuth?.();
-        if (!sess) return;
-
-        // 默认把 driverNumber 带上（用户最常查自己的记录）
-        const dn = (sess.driverNumber || sess.username || "").trim();
-        if (dn) $("qDriver").value = dn;
-
-        _all = loadRecords();
-        _filtered = [];
-        _page = 1;
-        hideResultPanel();
-
-        $("btnBack").addEventListener(
-          "click",
-          () => (window.location.href = "./index.html"),
-          { passive: true },
-        );
-        $("btnSearch").addEventListener("click", applyFilters, {
-          passive: true,
-        });
-        $("btnReset").addEventListener("click", resetFilters, {
-          passive: true,
-        });
-        $("btnExportJson").addEventListener("click", exportFilteredJson, {
-          passive: true,
-        });
-
-        $("btnPrev").addEventListener(
-          "click",
-          () => {
-            _page--;
-            render();
-          },
-          { passive: true },
-        );
-        $("btnNext").addEventListener(
-          "click",
-          () => {
-            _page++;
-            render();
-          },
-          { passive: true },
-        );
+  function resetFilters() {
+    ["qDriver", "qAccount", "qName", "qCity", "qRoute", "qNotes", "qDateFrom", "qDateTo"]
+      .forEach((id) => {
+        const el = $(id);
+        if (el) el.value = "";
       });
-    </script>
+
+    _filtered = [];
+    _page = 1;
+    hideResultPanel();
+    const tbody = $("tbody");
+    if (tbody) {
+      tbody.innerHTML = '<tr><td colspan="9" class="muted">请设置条件后点击 Search。</td></tr>';
+    }
+  }
+
+  function openDetail(record) {
+    localStorage.setItem(LS_HISTORY_VIEW, JSON.stringify(record));
+    localStorage.removeItem(LS_HISTORY_VIEW_INDEX);
+
+    const url = record?.remoteId
+      ? `./history_detail.html?id=${encodeURIComponent(record.remoteId)}`
+      : "./history_detail.html";
+
+    window.location.href = url;
+  }
+
+  function render() {
+    const list = _filtered.length ? _filtered : [];
+    const total = list.length;
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    _page = Math.min(Math.max(1, _page), totalPages);
+
+    const start = (_page - 1) * PAGE_SIZE;
+    const items = list.slice(start, start + PAGE_SIZE);
+
+    if ($("pageChip")) $("pageChip").textContent = `Page ${_page}/${totalPages}`;
+    if ($("pagerInfo")) {
+      $("pagerInfo").textContent = total
+        ? `Showing ${start + 1}-${Math.min(start + PAGE_SIZE, total)} of ${total}`
+        : "No records";
+    }
+    if ($("btnPrev")) $("btnPrev").disabled = _page === 1;
+    if ($("btnNext")) $("btnNext").disabled = _page === totalPages;
+
+    const tbody = $("tbody");
+    if (!tbody) return;
+
+    if (!items.length) {
+      tbody.innerHTML = '<tr><td colspan="9" class="muted">No records.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = items
+      .map((r, idx) => `
+        <tr>
+          <td>${fmtDateTime(r.completedAt || r.arrivalTime || r.createdAt || r.date)}</td>
+          <td>${safe(r.driverName || r.driverNumber) || "-"}</td>
+          <td>${safe(r.accountNumber) || "-"}</td>
+          <td>${safe(r.accountName) || "-"}</td>
+          <td>${safe(r.accountCity) || "-"}</td>
+          <td>${safe(r.accountRoute) || "-"}</td>
+          <td>${num(r.deliveredVolume)}</td>
+          <td>${safe(r.notes) || "-"}</td>
+          <td>
+            <button class="btn secondary" type="button" data-act="view" data-idx="${start + idx}">
+              View
+            </button>
+          </td>
+        </tr>
+      `)
+      .join("");
+  }
+
+  function exportFilteredJson() {
+    const data = _filtered.length ? _filtered : [];
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: "application/json;charset=utf-8",
+    });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "tdg_history_records.json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-act='view']");
+    if (!btn) return;
+
+    const idx = Number(btn.getAttribute("data-idx"));
+    const record = _filtered[idx];
+    if (!record) return;
+
+    openDetail(record);
+  });
+
+  document.addEventListener("DOMContentLoaded", async () => {
+    const sess = window.TDG_AUTH?.requireAuth?.();
+    if (!sess) return;
+
+    try {
+      _all = await loadRecordsFromSupabase();
+      console.log("History records loaded from Supabase:", _all.length);
+    } catch (err) {
+      console.error("History load failed:", err);
+      alert("历史记录读取失败，请检查 Supabase 权限或网络。");
+      _all = [];
+    }
+
+    const dn = safe(sess.driverNumber || sess.username || "");
+    if ($("qDriver") && dn) $("qDriver").value = dn;
+
+    _filtered = [];
+    _page = 1;
+    hideResultPanel();
+
+    const tbody = $("tbody");
+    if (tbody) {
+      tbody.innerHTML = '<tr><td colspan="9" class="muted">请设置条件后点击 Search。</td></tr>';
+    }
+
+    $("btnBack")?.addEventListener("click", () => {
+      window.location.href = "./index.html";
+    });
+
+    $("btnSearch")?.addEventListener("click", applyFilters, { passive: true });
+    $("btnReset")?.addEventListener("click", resetFilters, { passive: true });
+
+    const exportBtn = $("btnExportJson");
+    if (exportBtn) {
+      exportBtn.addEventListener("click", exportFilteredJson, { passive: true });
+    }
+
+    $("btnPrev")?.addEventListener("click", () => {
+      _page = Math.max(1, _page - 1);
+      render();
+    }, { passive: true });
+
+    $("btnNext")?.addEventListener("click", () => {
+      _page = _page + 1;
+      render();
+    }, { passive: true });
+  });
+</script>
   </body>
 </html>
