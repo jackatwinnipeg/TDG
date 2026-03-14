@@ -349,366 +349,499 @@
     <script src="./js/supabaseConfig.js"></script>
     <script src="./js/supabaseClient.js"></script>
     <script src="./js/auth_supabase.js"></script>
+<script>
+  const $ = (id) => document.getElementById(id);
 
-    <script>
-      const $ = (id) => document.getElementById(id);
+  const LS_RECORDS = "tdg_records_v3";
+  const LS_HISTORY_VIEW = "tdg_history_view_v1";
+  const LS_HISTORY_VIEW_INDEX = "tdg_history_view_index_v1";
+  const LS_FILL_LOG_RECORD = "tdg_fill_log_record_v1";
 
-      const LS_RECORDS = "tdg_records_v3";
-      const LS_HISTORY_VIEW = "tdg_history_view_v1";
-      const LS_HISTORY_VIEW_INDEX = "tdg_history_view_index_v1";
-      const LS_FILL_LOG_RECORD = "tdg_fill_log_record_v1";
+  const PAGE_SIZE = 5;
+  let relatedPage = 1;
+  let relatedRows = [];
 
-      const PAGE_SIZE = 5;
-      let relatedPage = 1;
-      let relatedRows = [];
+  function safe(v) {
+    return String(v ?? "").trim();
+  }
 
-      function safe(v) {
-        return String(v ?? "").trim();
+  function escapeHtml(s) {
+    return String(s ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function num(v) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function getSupabaseClientStrict() {
+    const sb = window.supabaseClient;
+    if (!sb?.from || !sb?.auth) {
+      throw new Error("Supabase client not initialized");
+    }
+    return sb;
+  }
+
+  function mapSupabaseRecord(r) {
+    return {
+      remoteId: r.id,
+      clientRecordId: r.client_record_id || "",
+      ownerId: r.owner_id || "",
+      driverNumber: r.driver_number || "",
+      driverName: r.driver_name || "",
+      date: r.work_date || "",
+      vehicleNo: r.vehicle_no || "",
+      weekCycle: r.week_cycle ?? "",
+      shiftStart: r.shift_start || "",
+      shiftFinish: r.shift_finish || "",
+      arrivalTime: r.arrival_time || "",
+      completedAt: r.completed_at || r.created_at || "",
+      accountNumber: r.account_number || "",
+      accountName: r.account_name || "",
+      accountAddress: r.account_address || "",
+      accountCity: r.account_city || "",
+      accountRoute: r.account_route || "",
+      tdgVolume: r.tdg_volume ?? 0,
+      deliveredVolume: r.delivered_volume ?? 0,
+      notes: r.notes || "",
+      synced: true,
+      createdAt: r.created_at || "",
+      raw: r.raw || null,
+    };
+  }
+
+  function getRecordIdFromUrl() {
+    const url = new URL(window.location.href);
+    return safe(url.searchParams.get("id"));
+  }
+
+  async function loadRecordByIdFromSupabase(recordId) {
+    if (!recordId) return null;
+
+    const sb = getSupabaseClientStrict();
+    const { data, error } = await sb
+      .from("tdg_records")
+      .select(`
+        id,
+        client_record_id,
+        owner_id,
+        driver_number,
+        driver_name,
+        work_date,
+        vehicle_no,
+        week_cycle,
+        shift_start,
+        shift_finish,
+        arrival_time,
+        completed_at,
+        account_number,
+        account_name,
+        account_address,
+        account_city,
+        account_route,
+        tdg_volume,
+        delivered_volume,
+        notes,
+        raw,
+        created_at
+      `)
+      .eq("id", recordId)
+      .single();
+
+    if (error) {
+      console.error("loadRecordByIdFromSupabase error:", error);
+      throw error;
+    }
+
+    return data ? mapSupabaseRecord(data) : null;
+  }
+
+  async function loadRelatedRecordsFromSupabase(accountNumber) {
+    const acct = safe(accountNumber);
+    if (!acct) return [];
+
+    const sb = getSupabaseClientStrict();
+    const { data, error } = await sb
+      .from("tdg_records")
+      .select(`
+        id,
+        client_record_id,
+        owner_id,
+        driver_number,
+        driver_name,
+        work_date,
+        vehicle_no,
+        week_cycle,
+        shift_start,
+        shift_finish,
+        arrival_time,
+        completed_at,
+        account_number,
+        account_name,
+        account_address,
+        account_city,
+        account_route,
+        tdg_volume,
+        delivered_volume,
+        notes,
+        raw,
+        created_at
+      `)
+      .eq("account_number", acct)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("loadRelatedRecordsFromSupabase error:", error);
+      throw error;
+    }
+
+    return (data || []).map(mapSupabaseRecord);
+  }
+
+  function toLocalDateObj(v) {
+    if (!v) return null;
+    if (v instanceof Date && !Number.isNaN(v.getTime())) return v;
+
+    const s = String(v).trim();
+    if (!s) return null;
+    if (/^\d{1,2}:\d{2}$/.test(s)) return null;
+
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  function formatLocalTime(v) {
+    const s = String(v ?? "").trim();
+    if (!s) return "—";
+
+    if (/^\d{1,2}:\d{2}$/.test(s)) {
+      const [h, m] = s.split(":");
+      return `${String(h).padStart(2, "0")}:${m}`;
+    }
+
+    const d = toLocalDateObj(s);
+    if (!d) return s || "—";
+
+    return `${String(d.getHours()).padStart(2, "0")}:${String(
+      d.getMinutes()
+    ).padStart(2, "0")}`;
+  }
+
+  function formatLocalDate(v) {
+    const d = toLocalDateObj(v);
+    if (!d) return "—";
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
+  function formatLocalDateTime(v) {
+    const d = toLocalDateObj(v);
+    if (!d) return "—";
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mi = String(d.getMinutes()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+  }
+
+  function fmt(v) {
+    if (v == null || v === "") return "—";
+    return String(v);
+  }
+
+  function loadRecords() {
+    try {
+      const raw = localStorage.getItem(LS_RECORDS) || "[]";
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function loadSelectedRecordFromLocal() {
+    try {
+      const raw = localStorage.getItem(LS_HISTORY_VIEW);
+      if (raw) {
+        const obj = JSON.parse(raw);
+        if (obj && typeof obj === "object") return obj;
       }
+    } catch {}
 
-      function escapeHtml(s) {
-        return String(s ?? "")
-          .replaceAll("&", "&amp;")
-          .replaceAll("<", "&lt;")
-          .replaceAll(">", "&gt;")
-          .replaceAll('"', "&quot;")
-          .replaceAll("'", "&#039;");
-      }
-
-      function num(v) {
-        const n = Number(v);
-        return Number.isFinite(n) ? n : 0;
-      }
-
-      function toLocalDateObj(v) {
-        if (!v) return null;
-        if (v instanceof Date && !Number.isNaN(v.getTime())) return v;
-
-        const s = String(v).trim();
-        if (!s) return null;
-        if (/^\d{1,2}:\d{2}$/.test(s)) return null;
-
-        const d = new Date(s);
-        return Number.isNaN(d.getTime()) ? null : d;
-      }
-
-      function formatLocalTime(v) {
-        const s = String(v ?? "").trim();
-        if (!s) return "—";
-
-        if (/^\d{1,2}:\d{2}$/.test(s)) {
-          const [h, m] = s.split(":");
-          return `${String(h).padStart(2, "0")}:${m}`;
+    try {
+      const idxRaw = localStorage.getItem(LS_HISTORY_VIEW_INDEX);
+      if (idxRaw != null && idxRaw !== "") {
+        const list = loadRecords();
+        const idx = Number(idxRaw);
+        if (Number.isInteger(idx) && idx >= 0 && idx < list.length) {
+          return list[idx];
         }
-
-        const d = toLocalDateObj(s);
-        if (!d) return s || "—";
-
-        return `${String(d.getHours()).padStart(2, "0")}:${String(
-          d.getMinutes(),
-        ).padStart(2, "0")}`;
       }
+    } catch {}
 
-      function formatLocalDate(v) {
-        const d = toLocalDateObj(v);
-        if (!d) return "—";
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      }
+    return null;
+  }
 
-      function formatLocalDateTime(v) {
-        const d = toLocalDateObj(v);
-        if (!d) return "—";
-        const yyyy = d.getFullYear();
-        const mm = String(d.getMonth() + 1).padStart(2, "0");
-        const dd = String(d.getDate()).padStart(2, "0");
-        const hh = String(d.getHours()).padStart(2, "0");
-        const mi = String(d.getMinutes()).padStart(2, "0");
-        return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
-      }
+  function isClockOnly(v) {
+    return /^\d{1,2}:\d{2}$/.test(String(v ?? "").trim());
+  }
 
-      function fmt(v) {
-        if (v == null || v === "") return "—";
-        return String(v);
-      }
+  function getArrivalClockValue(r) {
+    return safe(r.arrivalTime || r.arriveTime || r.arrivedAt || "");
+  }
 
-      function loadRecords() {
-        try {
-          const raw = localStorage.getItem(LS_RECORDS) || "[]";
-          const arr = JSON.parse(raw);
-          return Array.isArray(arr) ? arr : [];
-        } catch {
-          return [];
-        }
-      }
+  function getArrivalDateSource(r) {
+    const arrivalClock = getArrivalClockValue(r);
 
-      function loadSelectedRecord() {
-        try {
-          const raw = localStorage.getItem(LS_HISTORY_VIEW);
-          if (raw) {
-            const obj = JSON.parse(raw);
-            if (obj && typeof obj === "object") return obj;
-          }
-        } catch {}
+    if (!isClockOnly(arrivalClock)) {
+      const parsedArrival = toLocalDateObj(arrivalClock);
+      if (parsedArrival) return arrivalClock;
+    }
 
-        try {
-          const idxRaw = localStorage.getItem(LS_HISTORY_VIEW_INDEX);
-          if (idxRaw != null && idxRaw !== "") {
-            const list = loadRecords();
-            const idx = Number(idxRaw);
-            if (Number.isInteger(idx) && idx >= 0 && idx < list.length) {
-              return list[idx];
-            }
-          }
-        } catch {}
+    const datetimeFallback =
+      safe(r.arrivedAt) ||
+      safe(r.completedAt) ||
+      safe(r.updatedAt) ||
+      safe(r.createdAt) ||
+      "";
 
-        return null;
-      }
+    if (datetimeFallback && toLocalDateObj(datetimeFallback)) {
+      return datetimeFallback;
+    }
 
-      function isClockOnly(v) {
-        return /^\d{1,2}:\d{2}$/.test(String(v ?? "").trim());
-      }
+    return safe(r.date || "");
+  }
 
-      function getArrivalClockValue(r) {
-        return safe(r.arrivalTime || r.arriveTime || r.arrivedAt || "");
-      }
+  function getArrivalBaseTime(r) {
+    const dateSource = getArrivalDateSource(r);
+    const timeSource = getArrivalClockValue(r);
 
-      function getArrivalDateSource(r) {
-        const arrivalClock = getArrivalClockValue(r);
+    if (dateSource && toLocalDateObj(dateSource) && isClockOnly(timeSource)) {
+      const dateText = formatLocalDate(dateSource);
+      const timeText = formatLocalTime(timeSource);
+      return dateText !== "—" && timeText !== "—"
+        ? `${dateText} ${timeText}`
+        : dateSource;
+    }
 
-        if (!isClockOnly(arrivalClock)) {
-          const parsedArrival = toLocalDateObj(arrivalClock);
-          if (parsedArrival) return arrivalClock;
-        }
+    return dateSource || timeSource || "";
+  }
 
-        const datetimeFallback =
-          safe(r.arrivedAt) ||
-          safe(r.completedAt) ||
-          safe(r.updatedAt) ||
-          safe(r.createdAt) ||
-          "";
+  function getArrivalDateText(r) {
+    const dateSource = getArrivalDateSource(r);
+    const arrivalDate = formatLocalDate(dateSource);
+    return arrivalDate !== "—" ? arrivalDate : "—";
+  }
 
-        if (datetimeFallback && toLocalDateObj(datetimeFallback)) {
-          return datetimeFallback;
-        }
+  function getArrivalTimeText(r) {
+    const timeSource = getArrivalClockValue(r);
+    const arrivalTime = formatLocalTime(timeSource);
+    if (arrivalTime !== "—") return arrivalTime;
 
-        return safe(r.date || "");
-      }
+    const baseTime = getArrivalBaseTime(r);
+    const fallbackTime = formatLocalTime(baseTime);
+    return fallbackTime !== "—" ? fallbackTime : "—";
+  }
 
-      function getArrivalBaseTime(r) {
-        const dateSource = getArrivalDateSource(r);
-        const timeSource = getArrivalClockValue(r);
+  function getDisplayDateTime(r) {
+    const baseTime = getArrivalBaseTime(r);
+    const parsed = toLocalDateObj(baseTime);
+    if (parsed) return formatLocalDateTime(baseTime);
 
-        if (
-          dateSource &&
-          toLocalDateObj(dateSource) &&
-          isClockOnly(timeSource)
-        ) {
-          const dateText = formatLocalDate(dateSource);
-          const timeText = formatLocalTime(timeSource);
-          return dateText !== "—" && timeText !== "—"
-            ? `${dateText} ${timeText}`
-            : dateSource;
-        }
+    const datePart = getArrivalDateText(r);
+    const timePart = getArrivalTimeText(r);
 
-        return dateSource || timeSource || "";
-      }
+    if (datePart !== "—" && timePart !== "—") return `${datePart} ${timePart}`;
+    if (datePart !== "—") return datePart;
+    if (timePart !== "—") return timePart;
+    return "—";
+  }
 
-      function getArrivalDateText(r) {
-        const dateSource = getArrivalDateSource(r);
-        const arrivalDate = formatLocalDate(dateSource);
-        return arrivalDate !== "—" ? arrivalDate : "—";
-      }
+  function getSortKey(r) {
+    const baseTime = getArrivalBaseTime(r);
+    const parsed = toLocalDateObj(baseTime);
+    if (parsed) return parsed.getTime();
 
-      function getArrivalTimeText(r) {
-        const timeSource = getArrivalClockValue(r);
-        const arrivalTime = formatLocalTime(timeSource);
-        if (arrivalTime !== "—") return arrivalTime;
+    const dateText = getArrivalDateText(r);
+    const timeText = getArrivalTimeText(r);
 
-        const baseTime = getArrivalBaseTime(r);
-        const fallbackTime = formatLocalTime(baseTime);
-        return fallbackTime !== "—" ? fallbackTime : "—";
-      }
+    if (dateText !== "—") {
+      const combined = `${dateText} ${timeText !== "—" ? timeText : "00:00"}`;
+      const cd = new Date(combined);
+      if (!Number.isNaN(cd.getTime())) return cd.getTime();
+    }
 
-      function getDisplayDateTime(r) {
-        const baseTime = getArrivalBaseTime(r);
-        const parsed = toLocalDateObj(baseTime);
-        if (parsed) return formatLocalDateTime(baseTime);
+    const fallback = toLocalDateObj(
+      r.arrivedAt ||
+        r.completedAt ||
+        r.updatedAt ||
+        r.createdAt ||
+        r.date ||
+        ""
+    );
+    return fallback ? fallback.getTime() : 0;
+  }
 
-        const datePart = getArrivalDateText(r);
-        const timePart = getArrivalTimeText(r);
+  function renderRelatedTable() {
+    const tbody = $("tbody");
+    const total = relatedRows.length;
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-        if (datePart !== "—" && timePart !== "—")
-          return `${datePart} ${timePart}`;
-        if (datePart !== "—") return datePart;
-        if (timePart !== "—") return timePart;
-        return "—";
-      }
+    relatedPage = Math.min(Math.max(1, relatedPage), totalPages);
 
-      function getSortKey(r) {
-        const baseTime = getArrivalBaseTime(r);
-        const parsed = toLocalDateObj(baseTime);
-        if (parsed) return parsed.getTime();
+    const start = (relatedPage - 1) * PAGE_SIZE;
+    const items = relatedRows.slice(start, start + PAGE_SIZE);
 
-        const dateText = getArrivalDateText(r);
-        const timeText = getArrivalTimeText(r);
+    $("pageChip").textContent = `Page ${relatedPage}/${totalPages}`;
+    $("pagerInfo").textContent = total
+      ? `Showing ${start + 1}-${Math.min(start + PAGE_SIZE, total)} of ${total}`
+      : "No related records";
 
-        if (dateText !== "—") {
-          const combined = `${dateText} ${timeText !== "—" ? timeText : "00:00"}`;
-          const cd = new Date(combined);
-          if (!Number.isNaN(cd.getTime())) return cd.getTime();
-        }
+    $("btnPrev").disabled = relatedPage === 1;
+    $("btnNext").disabled = relatedPage === totalPages;
 
-        const fallback = toLocalDateObj(
-          r.arrivedAt ||
-            r.completedAt ||
-            r.updatedAt ||
-            r.createdAt ||
-            r.date ||
-            "",
-        );
-        return fallback ? fallback.getTime() : 0;
-      }
+    if (!items.length) {
+      tbody.innerHTML =
+        '<tr><td colspan="4" class="muted">No related records.</td></tr>';
+      return;
+    }
 
-      function getRelatedRecordsByAccount(accountNumber) {
-        const acct = safe(accountNumber);
-        if (!acct) return [];
-
-        return loadRecords()
-          .filter((r) => safe(r.accountNumber) === acct)
-          .sort((a, b) => getSortKey(b) - getSortKey(a));
-      }
-
-      function renderRelatedTable() {
-        const tbody = $("tbody");
-        const total = relatedRows.length;
-        const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-
-        relatedPage = Math.min(Math.max(1, relatedPage), totalPages);
-
-        const start = (relatedPage - 1) * PAGE_SIZE;
-        const items = relatedRows.slice(start, start + PAGE_SIZE);
-
-        $("pageChip").textContent = `Page ${relatedPage}/${totalPages}`;
-        $("pagerInfo").textContent = total
-          ? `Showing ${start + 1}-${Math.min(start + PAGE_SIZE, total)} of ${total}`
-          : "No related records";
-
-        $("btnPrev").disabled = relatedPage === 1;
-        $("btnNext").disabled = relatedPage === totalPages;
-
-        if (!items.length) {
-          tbody.innerHTML =
-            '<tr><td colspan="4" class="muted">No related records.</td></tr>';
-          return;
-        }
-
-        tbody.innerHTML = items
-          .map((r) => {
-            const timeText = getDisplayDateTime(r);
-            const driverName = safe(
-              r.driverName || r.displayName || r.driver || "",
-            );
-            const delivered = num(r.deliveredVolume ?? r.delivered ?? 0);
-            const notes = safe(r.notes || r.note || "");
-
-            return `
-              <tr>
-                <td>${escapeHtml(timeText)}</td>
-                <td>${escapeHtml(driverName || "—")}</td>
-                <td>${escapeHtml(String(delivered))}</td>
-                <td>${escapeHtml(notes || "—")}</td>
-              </tr>
-            `;
-          })
-          .join("");
-      }
-
-      function renderEmpty() {
-        $("emptyState").style.display = "";
-        $("detailWrap").style.display = "none";
-      }
-
-      function renderRecord(r) {
-        $("emptyState").style.display = "none";
-        $("detailWrap").style.display = "";
-
+    tbody.innerHTML = items
+      .map((r) => {
+        const timeText = getDisplayDateTime(r);
+        const driverName = safe(r.driverName || r.displayName || r.driver || "");
         const delivered = num(r.deliveredVolume ?? r.delivered ?? 0);
         const notes = safe(r.notes || r.note || "");
-        const arrivalDateText = getArrivalDateText(r);
-        const arrivalTimeText = getArrivalTimeText(r);
 
-        $("kpiDate").textContent = arrivalDateText;
-        $("kpiDriverName").textContent = fmt(r.driverName);
-        $("kpiVehicleNo").textContent = fmt(r.vehicleNo);
-        $("kpiDelivered").textContent = String(delivered);
-        $("kpiArrival").textContent = arrivalTimeText;
+        return `
+          <tr>
+            <td>${escapeHtml(timeText)}</td>
+            <td>${escapeHtml(driverName || "—")}</td>
+            <td>${escapeHtml(String(delivered))}</td>
+            <td>${escapeHtml(notes || "—")}</td>
+          </tr>
+        `;
+      })
+      .join("");
+  }
 
-        $("vAccountNumber").textContent = fmt(r.accountNumber);
-        $("vAccountName").textContent = fmt(r.accountName);
-        $("vAccountAddress").textContent = fmt(r.accountAddress);
-        $("vAccountCity").textContent = fmt(r.accountCity);
-        $("vAccountRoute").textContent = fmt(r.accountRoute);
+  function renderEmpty() {
+    $("emptyState").style.display = "";
+    $("detailWrap").style.display = "none";
+  }
 
-        $("vDriverNumber").textContent = fmt(r.driverNumber);
-        $("vDriverName").textContent = fmt(r.driverName);
-        $("vVehicleNo").textContent = fmt(r.vehicleNo);
-        $("vArrivalTime").textContent = arrivalTimeText;
-        $("vDriverNotes").textContent = notes || "—";
+  function renderRecord(r) {
+    $("emptyState").style.display = "none";
+    $("detailWrap").style.display = "";
 
-        relatedRows = getRelatedRecordsByAccount(r.accountNumber);
-        relatedPage = 1;
-        renderRelatedTable();
+    const delivered = num(r.deliveredVolume ?? r.delivered ?? 0);
+    const notes = safe(r.notes || r.note || "");
+    const arrivalDateText = getArrivalDateText(r);
+    const arrivalTimeText = getArrivalTimeText(r);
+
+    $("kpiDate").textContent = arrivalDateText;
+    $("kpiDriverName").textContent = fmt(r.driverName);
+    $("kpiVehicleNo").textContent = fmt(r.vehicleNo);
+    $("kpiDelivered").textContent = String(delivered);
+    $("kpiArrival").textContent = arrivalTimeText;
+
+    $("vAccountNumber").textContent = fmt(r.accountNumber);
+    $("vAccountName").textContent = fmt(r.accountName);
+    $("vAccountAddress").textContent = fmt(r.accountAddress);
+    $("vAccountCity").textContent = fmt(r.accountCity);
+    $("vAccountRoute").textContent = fmt(r.accountRoute);
+
+    $("vDriverNumber").textContent = fmt(r.driverNumber);
+    $("vDriverName").textContent = fmt(r.driverName);
+    $("vVehicleNo").textContent = fmt(r.vehicleNo);
+    $("vArrivalTime").textContent = arrivalTimeText;
+    $("vDriverNotes").textContent = notes || "—";
+  }
+
+  function openFillLog(r) {
+    localStorage.setItem(LS_FILL_LOG_RECORD, JSON.stringify(r));
+    window.open("./fill_log.html", "_blank");
+  }
+
+  async function initHistoryDetail() {
+    const sess = window.TDG_AUTH?.requireAuth?.();
+    if (!sess) return;
+
+    $("who").textContent =
+      `当前登录：${sess.displayName || sess.username}（${sess.role}）`;
+
+    let record = null;
+
+    const recordId = getRecordIdFromUrl();
+    if (recordId) {
+      try {
+        record = await loadRecordByIdFromSupabase(recordId);
+      } catch (err) {
+        console.error("Load detail by id failed:", err);
       }
+    }
 
-      function openFillLog(r) {
-        localStorage.setItem(LS_FILL_LOG_RECORD, JSON.stringify(r));
-        window.open("./fill_log.html", "_blank");
+    if (!record) {
+      record = loadSelectedRecordFromLocal();
+    }
+
+    if (!record) {
+      renderEmpty();
+      return;
+    }
+
+    renderRecord(record);
+
+    try {
+      relatedRows = record.accountNumber
+        ? await loadRelatedRecordsFromSupabase(record.accountNumber)
+        : [];
+    } catch (err) {
+      console.error("Load related records failed:", err);
+      relatedRows = [];
+    }
+
+    relatedRows.sort((a, b) => getSortKey(b) - getSortKey(a));
+    relatedPage = 1;
+    renderRelatedTable();
+
+    $("btnExport").addEventListener("click", () => openFillLog(record));
+  }
+
+  document.addEventListener("DOMContentLoaded", async () => {
+    await initHistoryDetail();
+
+    $("btnPrev").addEventListener("click", () => {
+      relatedPage = Math.max(1, relatedPage - 1);
+      renderRelatedTable();
+    });
+
+    $("btnNext").addEventListener("click", () => {
+      const totalPages = Math.max(1, Math.ceil(relatedRows.length / PAGE_SIZE));
+      relatedPage = Math.min(totalPages, relatedPage + 1);
+      renderRelatedTable();
+    });
+
+    $("btnBack").addEventListener("click", () => {
+      if (
+        document.referrer &&
+        document.referrer.toLowerCase().includes("history_record")
+      ) {
+        history.back();
+        return;
       }
+      window.location.href = "./History_Record.html";
+    });
 
-      document.addEventListener("DOMContentLoaded", () => {
-        const sess = window.TDG_AUTH?.requireAuth?.();
-        if (!sess) return;
-
-        $("who").textContent =
-          `当前登录：${sess.displayName || sess.username}（${sess.role}）`;
-
-        const record = loadSelectedRecord();
-        if (!record) {
-          renderEmpty();
-        } else {
-          renderRecord(record);
-          $("btnExport").addEventListener("click", () => openFillLog(record));
-        }
-
-        $("btnPrev").addEventListener("click", () => {
-          relatedPage = Math.max(1, relatedPage - 1);
-          renderRelatedTable();
-        });
-
-        $("btnNext").addEventListener("click", () => {
-          const totalPages = Math.max(
-            1,
-            Math.ceil(relatedRows.length / PAGE_SIZE),
-          );
-          relatedPage = Math.min(totalPages, relatedPage + 1);
-          renderRelatedTable();
-        });
-
-        $("btnBack").addEventListener("click", () => {
-          if (
-            document.referrer &&
-            document.referrer.toLowerCase().includes("history_record")
-          ) {
-            history.back();
-            return;
-          }
-          window.location.href = "./History_Record.html";
-        });
-
-        $("btnLogout").addEventListener("click", () =>
-          window.TDG_AUTH?.logout?.(),
-        );
-      });
-    </script>
+    $("btnLogout").addEventListener("click", () =>
+      window.TDG_AUTH?.logout?.()
+    );
+  });
+</script>
   </body>
 </html>
