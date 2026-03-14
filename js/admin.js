@@ -117,55 +117,54 @@ async function requireAdminPageAccess() {
   const sb = getSb();
   const token = await getAccessToken();
 
-  try {
-    const { data, error } = await sb.functions.invoke(name, {
-      body: method === "GET" ? undefined : (payload ?? {}),
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
+  const { data, error } = await sb.functions.invoke(name, {
+    body: method === "GET" ? undefined : (payload ?? {}),
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
 
-    if (!error) return data;
+  if (!error) return data;
 
-    let serverMsg = error.message || "Edge Function 调用失败";
+  console.log("Function invoke error:", error);
+  console.log("Function invoke error.context:", error.context);
 
-    if (error.context) {
+  let serverMsg = error.message || "Edge Function 调用失败";
+
+  if (error.context) {
+    try {
+      const cloned = error.context.clone();
+      const body = await cloned.json();
+      console.log("Function error body:", body);
+      serverMsg = body?.detail || body?.error || serverMsg;
+    } catch (jsonErr) {
       try {
-        const body = await error.context.json();
-        serverMsg =
-          body?.detail ||
-          body?.error ||
-          serverMsg;
-      } catch {
-        try {
-          const text = await error.context.text();
-          if (text) serverMsg = text;
-        } catch {
-          // ignore
-        }
+        const cloned = error.context.clone();
+        const text = await cloned.text();
+        console.log("Function error text:", text);
+        if (text) serverMsg = text;
+      } catch (textErr) {
+        console.log("读取错误响应失败:", textErr);
       }
     }
-
-    if (
-      serverMsg.includes("Invalid session") ||
-      serverMsg.includes("Missing bearer token") ||
-      serverMsg.includes("登录已失效")
-    ) {
-      throw new Error("登录已失效，请重新登录");
-    }
-
-    if (
-      serverMsg.includes("Only admin can update users") ||
-      serverMsg.includes("Caller profile not found")
-    ) {
-      throw new Error("没有权限执行此操作");
-    }
-
-    throw new Error(serverMsg);
-  } catch (e) {
-    if (e instanceof Error) throw e;
-    throw new Error("网络请求失败，无法连接 Edge Function");
   }
+
+  if (
+    serverMsg.includes("Invalid session") ||
+    serverMsg.includes("Missing bearer token") ||
+    serverMsg.includes("登录已失效")
+  ) {
+    throw new Error("登录已失效，请重新登录");
+  }
+
+  if (
+    serverMsg.includes("Only admin can update users") ||
+    serverMsg.includes("Caller profile not found")
+  ) {
+    throw new Error("没有权限执行此操作");
+  }
+
+  throw new Error(serverMsg);
 }
 
   function showApiError(err, fallback = "操作失败") {
