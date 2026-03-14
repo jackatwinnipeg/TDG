@@ -125,47 +125,57 @@ async function requireAdminPageAccess() {
     throw new Error("登录已失效，请重新登录");
   }
 
-  let data, error;
-
   try {
-    const result = await sb.functions.invoke(name, {
+    const { data, error } = await sb.functions.invoke(name, {
       body: method === "GET" ? undefined : (payload ?? {}),
       headers: {
         Authorization: `Bearer ${session.access_token}`,
       },
     });
 
-    data = result.data;
-    error = result.error;
-  } catch (e) {
-    throw new Error("网络请求失败，无法连接 Edge Function");
-  }
+    if (!error) {
+      return data;
+    }
 
-  if (error) {
-    const msg =
-      error?.context?.error ||
-      error?.message ||
-      "Edge Function 调用失败";
+    let serverMsg = error.message || "Edge Function 调用失败";
+
+    if (error.context) {
+      try {
+        const body = await error.context.json();
+        serverMsg =
+          body?.detail ||
+          body?.error ||
+          serverMsg;
+      } catch {
+        try {
+          const text = await error.context.text();
+          if (text) serverMsg = text;
+        } catch {
+          // ignore
+        }
+      }
+    }
 
     if (
-      msg.includes("Invalid session") ||
-      msg.includes("登录已失效") ||
-      msg.includes("Missing bearer token")
+      serverMsg.includes("Invalid session") ||
+      serverMsg.includes("Missing bearer token") ||
+      serverMsg.includes("登录已失效")
     ) {
       throw new Error("登录已失效，请重新登录");
     }
 
     if (
-      msg.includes("Only admin can update users") ||
-      msg.includes("Caller profile not found")
+      serverMsg.includes("Only admin can update users") ||
+      serverMsg.includes("Caller profile not found")
     ) {
       throw new Error("没有权限执行此操作");
     }
 
-    throw new Error(msg);
+    throw new Error(serverMsg);
+  } catch (e) {
+    if (e instanceof Error) throw e;
+    throw new Error("网络请求失败，无法连接 Edge Function");
   }
-
-  return data;
 }
 
   function showApiError(err, fallback = "操作失败") {
