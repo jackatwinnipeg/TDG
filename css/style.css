@@ -653,3 +653,317 @@ table thead th:nth-child(6) {
     grid-template-columns: 1fr !important;
   }
 }
+/* =========================================
+   iPhone / Samsung 手机专项优化
+   追加到 style.css 最底部
+   ========================================= */
+
+/* 通用手机端（iPhone + Samsung + Android phones） */
+@media only screen and (max-width: 767px) {
+
+  html {
+    font-size: 18px !important;
+    -webkit-text-size-adjust: 100% !important;
+  }
+
+  body {
+    font-size: 18px !important;
+    overflow-x: hidden !important;
+  }
+
+  .container {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 14px 14px 24px !important;
+  }
+
+  header {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    justify-content: flex-start !important;
+    gap: 12px !important;
+    padding: 10px 0 16px !important;
+  }
+
+  .header-left {
+    width: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+  }
+
+  .logo {
+    height: 64px !important;
+    width: auto !important;
+    flex-shrink: 0 !important;
+  }
+
+  header h1 {
+    font-size: 28px !important;
+    line-height: 1.2 !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow: visible !important;
+    text-overflow: unset !important;
+    margin: 0 !important;
+  }
+
+  .tag,
+  .pill {
+    font-size: 14px !important;
+    padding: 8px 12px !important;
+    line-height: 1.4 !important;
+  }
+
+  .layout {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  .card {
+    border-radius: 18px !important;
+  }
+
+  .card .hd {
+    padding: 14px 14px 12px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+
+  .card .bd {
+    padding: 14px !important;
+  }
+
+  .card .hd h2,
+  .card .hd h3 {
+    font-size: 22px !important;
+    line-height: 1.25 !important;
+    margin: 0 !important;
+  }
+
+  .result h3 {
+    font-size: 19px !important;
+    line-height: 1.3 !important;
+  }
+
+  .muted,
+  .help,
+  label {
+    font-size: 15px !important;
+    line-height: 1.55 !important;
+  }
+
+  .row {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 10px !important;
+    align-items: stretch !important;
+  }
+
+  .grid2,
+  .grid3 {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  input,
+  textarea,
+  select {
+    width: 100% !important;
+    min-height: 52px !important;
+    font-size: 17px !important;
+    line-height: 1.4 !important;
+    padding: 14px 14px !important;
+    border-radius: 14px !important;
+  }
+
+  textarea {
+    min-height: 120px !important;
+  }
+
+  .btn {
+    width: 100% !important;
+    min-height: 52px !important;
+    font-size: 17px !important;
+    line-height: 1.2 !important;
+    padding: 12px 14px !important;
+    border-radius: 14px !important;
+  }
+
+  #btnCheckIn,
+  #btnCheckOut,
+  #btnArrive {
+    width: 100% !important;
+    min-height: 52px !important;
+    font-size: 17px !important;
+    padding: 12px 14px !important;
+  }
+
+  .panel-actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  #weekCycleRow {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 10px !important;
+  }
+
+  #weekCycleRow #weekCycle {
+    width: 100% !important;
+    min-width: 100% !important;
+    flex: none !important;
+  }
+
+  .table {
+    display: block !important;
+    width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    border-spacing: 0 8px !important;
+  }
+
+  .table thead th {
+    font-size: 14px !important;
+    white-space: nowrap !important;
+    padding: 0 10px 8px !important;
+  }
+
+  .table tbody td {
+    font-size: 15px !important;
+    line-height: 1.45 !important;
+    padding: 12px 10px !important;
+    white-space: nowrap !important;
+  }
+
+  .result {
+    padding: 14px !important;
+    border-radius: 16px !important;
+  }
+
+  .toast {
+    left: 12px !important;
+    right: 12px !important;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px)) !important;
+    max-width: none !important;
+    padding: 14px !important;
+    border-radius: 14px !important;
+  }
+
+  .toast strong {
+    font-size: 15px !important;
+  }
+
+  .toast p {
+    font-size: 14px !important;
+    line-height: 1.5 !important;
+  }
+}
+
+/* iPhone 专项：刘海屏 / 安全区优化 */
+@media only screen and (max-width: 767px) and (-webkit-min-device-pixel-ratio: 2) {
+
+  body {
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  }
+
+  .container {
+    padding-left: max(14px, env(safe-area-inset-left, 0px)) !important;
+    padding-right: max(14px, env(safe-area-inset-right, 0px)) !important;
+    padding-bottom: max(24px, env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  header {
+    padding-top: max(10px, env(safe-area-inset-top, 0px)) !important;
+  }
+}
+
+/* 小尺寸手机，例如 iPhone SE / 小屏 Samsung */
+@media only screen and (max-width: 390px) {
+
+  html {
+    font-size: 17px !important;
+  }
+
+  .container {
+    padding: 12px 12px 20px !important;
+  }
+
+  .logo {
+    height: 56px !important;
+  }
+
+  header h1 {
+    font-size: 24px !important;
+  }
+
+  .card .hd h2,
+  .card .hd h3 {
+    font-size: 20px !important;
+  }
+
+  .muted,
+  .help,
+  label {
+    font-size: 14px !important;
+  }
+
+  input,
+  textarea,
+  select {
+    min-height: 50px !important;
+    font-size: 16px !important;
+    padding: 12px 12px !important;
+  }
+
+  .btn {
+    min-height: 50px !important;
+    font-size: 16px !important;
+    padding: 12px !important;
+  }
+
+  .table thead th {
+    font-size: 13px !important;
+  }
+
+  .table tbody td {
+    font-size: 14px !important;
+    padding: 10px 8px !important;
+  }
+}
+
+/* 较大手机，例如 iPhone Pro Max / Samsung Ultra */
+@media only screen and (min-width: 391px) and (max-width: 767px) {
+
+  .container {
+    padding: 16px 16px 24px !important;
+  }
+
+  header h1 {
+    font-size: 30px !important;
+  }
+
+  .card .hd h2,
+  .card .hd h3 {
+    font-size: 23px !important;
+  }
+
+  input,
+  textarea,
+  select {
+    min-height: 54px !important;
+    font-size: 17px !important;
+  }
+
+  .btn {
+    min-height: 54px !important;
+    font-size: 17px !important;
+  }
+}
