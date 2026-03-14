@@ -115,27 +115,17 @@ async function requireAdminPageAccess() {
 
   async function callFn(name, payload, { method = "POST" } = {}) {
   const sb = getSb();
-
-  const {
-    data: { session },
-    error: sessionError,
-  } = await sb.auth.getSession();
-
-  if (sessionError || !session?.access_token) {
-    throw new Error("登录已失效，请重新登录");
-  }
+  const token = await getAccessToken();
 
   try {
     const { data, error } = await sb.functions.invoke(name, {
       body: method === "GET" ? undefined : (payload ?? {}),
       headers: {
-        Authorization: `Bearer ${session.access_token}`,
+        Authorization: `Bearer ${token}`,
       },
     });
 
-    if (!error) {
-      return data;
-    }
+    if (!error) return data;
 
     let serverMsg = error.message || "Edge Function 调用失败";
 
