@@ -1161,13 +1161,14 @@ async function requireAdminPageAccess() {
     window.location.href = "./login.html";
   });
 
-  function renderAll() {
-    renderUsers();
-    renderCustomers();
-  }
+ function renderAll() {
+  renderUsers();
+  renderCustomers();
+}
 
-  requireAdminPageAccess().then((ok) => {
+requireAdminPageAccess().then((ok) => {
   if (ok) {
     renderAll();
   }
 });
+})();
