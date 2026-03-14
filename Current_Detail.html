@@ -119,6 +119,9 @@
           <button class="btn secondary" id="btnBack" type="button">
             ← Back
           </button>
+          <button class="btn secondary" id="btnRefresh" type="button">
+            Refresh
+          </button>
           <button class="btn secondary" id="btnExport" type="button">
             Export PDF
           </button>
@@ -285,6 +288,7 @@
       window.__TDG_DRIVERS__ = window.__TDG_DRIVERS__ || [];
       window.__TDG_DRIVER_DIR__ = window.__TDG_DRIVER_DIR__ || new Map();
       window.__CURRENT_DETAIL_SOURCE__ = "local";
+      window.__CURRENT_DETAIL_LOADING__ = false;
 
       function getSupabaseClientStrict() {
         const sb = window.supabaseClient;
@@ -349,12 +353,12 @@
       }
 
       function tdgToday() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
+        const d = new Date();
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        return `${y}-${m}-${day}`;
+      }
 
       function mapSupabaseRecordToLocalShape(r) {
         return {
@@ -422,19 +426,27 @@
         if (error) throw error;
 
         const list = (data || []).map(mapSupabaseRecordToLocalShape);
-        localStorage.setItem(LS_RECORDS, JSON.stringify(list));
+        saveLocalRecords(list);
         window.__CURRENT_DETAIL_SOURCE__ = "supabase";
 
         console.log("Current Detail pulled from Supabase:", list.length, list);
         return list;
       }
 
-      async function refreshRecordsSource() {
+      async function refreshRecordsSource({ silent = false } = {}) {
+        if (window.__CURRENT_DETAIL_LOADING__) return;
+        window.__CURRENT_DETAIL_LOADING__ = true;
+
         try {
           await pullTodayRecordsFromSupabase();
         } catch (e) {
           console.warn("pullTodayRecordsFromSupabase failed, fallback to local:", e);
           window.__CURRENT_DETAIL_SOURCE__ = "local";
+          if (!silent) {
+            alert("从云端读取今天记录失败，当前显示本地缓存。");
+          }
+        } finally {
+          window.__CURRENT_DETAIL_LOADING__ = false;
         }
       }
 
@@ -446,6 +458,13 @@
           r.createdAt ||
           "";
         if (!v) return "-";
+
+        if (/^\d{1,2}:\d{2}$/.test(String(v).trim())) {
+          const workDate = safe(r.date || "");
+          const time = formatLocalTime(v);
+          return escapeHtml(workDate ? `${workDate} ${time}` : time);
+        }
+
         return escapeHtml(formatLocalDateTime(v));
       }
 
@@ -712,8 +731,8 @@
           if (ek !== "") endKm = ek;
           if ((!totalKm || totalKm === "") && tk !== "") totalKm = tk;
 
-          const ss = normStr(idx.shiftTimeStart);
-          const sf = normStr(idx.shiftTimeFinish);
+          const ss = normStr(idx.shiftTimeStart || idx.shiftStart);
+          const sf = normStr(idx.shiftTimeFinish || idx.shiftFinish);
           if (ss) shiftStart = ss;
           if (sf) shiftFinish = sf;
         }
@@ -801,6 +820,14 @@
           }
         });
 
+        $("btnRefresh").addEventListener("click", async () => {
+          $("tbody").innerHTML =
+            '<tr><td colspan="10" class="muted">Refreshing...</td></tr>';
+          await refreshRecordsSource({ silent: false });
+          page = 1;
+          render();
+        });
+
         $("btnLogout").addEventListener("click", () =>
           window.TDG_AUTH.logout(),
         );
@@ -827,6 +854,7 @@
           }
 
           localStorage.removeItem(LS_RECORDS);
+          page = 1;
           render();
           alert("已清空。");
         });
@@ -895,10 +923,9 @@
         });
 
         await loadDriversDirectory();
-        await refreshRecordsSource();
+        await refreshRecordsSource({ silent: true });
         render();
       });
     </script>
   </body>
 </html>
-
