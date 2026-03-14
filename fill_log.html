@@ -362,7 +362,6 @@
         if (!v) return null;
         const s = String(v).trim();
         if (!s) return null;
-
         if (/^\d{1,2}:\d{2}$/.test(s)) return null;
 
         const d = new Date(s);
@@ -411,13 +410,21 @@
       }
 
       function getDisplayDate(rec) {
-        const completed = safe(rec.completedAt);
-        const created = safe(rec.createdAt);
-        const dateOnly = safe(rec.date);
+        const dateOnly =
+          formatDate(rec.date) ||
+          formatDate(rec.completedAt) ||
+          formatDate(rec.createdAt) ||
+          "";
 
-        if (completed && toDateValue(completed)) return formatDate(completed);
-        if (created && toDateValue(created)) return formatDate(created);
-        if (dateOnly) return formatDate(dateOnly) || dateOnly;
+        const timeOnly =
+          formatTime(rec.arrivalTime) ||
+          formatTime(rec.completedAt) ||
+          formatTime(rec.createdAt) ||
+          "";
+
+        if (dateOnly && timeOnly) return `${dateOnly} ${timeOnly}`;
+        if (dateOnly) return dateOnly;
+        if (timeOnly) return timeOnly;
 
         return "";
       }
@@ -427,12 +434,7 @@
       }
 
       function getDisplayNotes(rec) {
-        const notes = safe(rec.notes || rec.note || "");
-        const t = formatTime(rec.arrivalTime);
-
-        if (notes && t) return `${t} ${notes}`;
-        if (t) return t;
-        return notes;
+        return safe(rec.notes || rec.note || "");
       }
 
       function fillHeader(r) {
