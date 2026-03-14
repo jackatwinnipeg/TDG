@@ -1,7 +1,7 @@
 /* /js/admin.js
  * Supabase-first Admin Panel
  * - Users: uses public.tdg_profiles
- * - Auth guard: uses window.TDG_AUTH from auth_supabase.js
+ * - Auth guard: uses Supabase Auth directly
  * - Customers: uses public.tdg_customers
  * - Create / Update / Delete User: via Edge Functions / Supabase
  *
@@ -27,46 +27,8 @@
       .replaceAll("'", "&#039;");
 
   let currentProfile = null;
-
-async function requireAdminPageAccess() {
-  const sb = getSb();
-
-  const {
-    data: { user },
-    error: userError,
-  } = await sb.auth.getUser();
-
-  if (userError || !user) {
-    alert("登录已失效，请重新登录");
-    window.location.href = "./login.html";
-    return false;
-  }
-
-  const { data: profile, error: profileError } = await sb
-    .from("tdg_profiles")
-    .select("id, username, display_name, role")
-    .eq("id", user.id)
-    .single();
-
-  if (profileError || !profile || profile.role !== "admin") {
-    alert("没有权限访问此页面");
-    window.location.href = "./login.html";
-    return false;
-  }
-
-  currentProfile = profile;
-
-  if ($("who")) {
-    $("who").textContent = `当前登录：${profile.display_name || profile.username}（${profile.role}）`;
-  }
-
-  on($("btnLogout"), "click", async () => {
-    await sb.auth.signOut();
-    window.location.href = "./login.html";
-  });
-
-  return true;
-}
+  let custPage = 1;
+  const CUST_PAGE_SIZE = 5;
 
   function getSb() {
     const sb = window.supabaseClient;
@@ -84,28 +46,77 @@ async function requireAdminPageAccess() {
   }
 
   async function getAccessToken() {
-  const sb = getSb();
+    const sb = getSb();
 
-  const {
-    data: { session },
-    error: sessionError,
-  } = await sb.auth.getSession();
+    const {
+      data: { session },
+      error: sessionError,
+    } = await sb.auth.getSession();
 
-  if (sessionError || !session?.access_token) {
-    throw new Error("登录已失效，请重新登录");
+    if (sessionError || !session?.access_token) {
+      throw new Error("登录已失效，请重新登录");
+    }
+
+    const {
+      data: { user },
+      error: userError,
+    } = await sb.auth.getUser();
+
+    if (userError || !user) {
+      throw new Error("登录已失效，请重新登录");
+    }
+
+    return session.access_token;
   }
 
-  const {
-    data: { user },
-    error: userError,
-  } = await sb.auth.getUser();
+  async function requireAdminPageAccess() {
+    const sb = getSb();
 
-  if (userError || !user) {
-    throw new Error("登录已失效，请重新登录");
+    const {
+      data: { user },
+      error: userError,
+    } = await sb.auth.getUser();
+
+    if (userError || !user) {
+      alert("登录已失效，请重新登录");
+      window.location.href = "./login.html";
+      return false;
+    }
+
+    const { data: profile, error: profileError } = await sb
+      .from("tdg_profiles")
+      .select("id, username, display_name, role, email")
+      .eq("id", user.id)
+      .single();
+
+    if (profileError || !profile) {
+      alert("当前用户资料不存在，请重新登录");
+      window.location.href = "./login.html";
+      return false;
+    }
+
+    if (profile.role !== "admin") {
+      alert("没有权限访问此页面");
+      window.location.href = "./login.html";
+      return false;
+    }
+
+    currentProfile = profile;
+
+    if ($("who")) {
+      $("who").textContent = `当前登录：${profile.display_name || profile.username}（${profile.role}）`;
+    }
+
+    on($("btnLogout"), "click", async () => {
+      try {
+        await sb.auth.signOut();
+      } finally {
+        window.location.href = "./login.html";
+      }
+    });
+
+    return true;
   }
-
-  return session.access_token;
-}
 
   function canonicalEmailFromDriverNumber(driverNumber, email = "") {
     const normalizedEmail = safe(email).toLowerCase();
@@ -114,75 +125,75 @@ async function requireAdminPageAccess() {
   }
 
   async function callFn(name, payload, { method = "POST" } = {}) {
-  const sb = getSb();
-  const token = await getAccessToken();
+    const sb = getSb();
+    const token = await getAccessToken();
 
-  const { data, error } = await sb.functions.invoke(name, {
-    body: method === "GET" ? undefined : (payload ?? {}),
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+    const { data, error } = await sb.functions.invoke(name, {
+      body: method === "GET" ? undefined : (payload ?? {}),
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
 
-  if (!error) return data;
+    if (!error) return data;
 
-  console.log("Function invoke error:", error);
-  console.log("Function invoke error.context:", error.context);
+    console.log("Function invoke error:", error);
+    console.log("Function invoke error.context:", error.context);
 
-  let serverMsg = error.message || "Edge Function 调用失败";
+    let serverMsg = error.message || "Edge Function 调用失败";
 
-  if (error.context) {
-    try {
-      const cloned = error.context.clone();
-      const body = await cloned.json();
-      console.log("Function error body:", body);
-      serverMsg = body?.detail || body?.error || serverMsg;
-    } catch (jsonErr) {
+    if (error.context) {
       try {
         const cloned = error.context.clone();
-        const text = await cloned.text();
-        console.log("Function error text:", text);
-        if (text) serverMsg = text;
-      } catch (textErr) {
-        console.log("读取错误响应失败:", textErr);
+        const body = await cloned.json();
+        console.log("Function error body:", body);
+        serverMsg = body?.detail || body?.error || serverMsg;
+      } catch {
+        try {
+          const cloned = error.context.clone();
+          const text = await cloned.text();
+          console.log("Function error text:", text);
+          if (text) serverMsg = text;
+        } catch (textErr) {
+          console.log("读取错误响应失败:", textErr);
+        }
       }
     }
-  }
 
-  if (
-    serverMsg.includes("Invalid session") ||
-    serverMsg.includes("Missing bearer token") ||
-    serverMsg.includes("登录已失效")
-  ) {
-    throw new Error("登录已失效，请重新登录");
-  }
+    if (
+      serverMsg.includes("Invalid session") ||
+      serverMsg.includes("Missing bearer token") ||
+      serverMsg.includes("登录已失效")
+    ) {
+      throw new Error("登录已失效，请重新登录");
+    }
 
-  if (
-    serverMsg.includes("Only admin can update users") ||
-    serverMsg.includes("Caller profile not found")
-  ) {
-    throw new Error("没有权限执行此操作");
-  }
+    if (
+      serverMsg.includes("Only admin can update users") ||
+      serverMsg.includes("Caller profile not found")
+    ) {
+      throw new Error("没有权限执行此操作");
+    }
 
-  throw new Error(serverMsg);
-}
+    throw new Error(serverMsg);
+  }
 
   function showApiError(err, fallback = "操作失败") {
-  const msg = String(err?.message || fallback);
+    const msg = String(err?.message || fallback);
 
-  if (
-    msg.includes("重新登录") ||
-    msg.includes("登录已失效") ||
-    msg.includes("Invalid session") ||
-    msg.includes("Missing bearer token")
-  ) {
-    alert(msg);
-    window.location.href = "./login.html";
-    return;
+    if (
+      msg.includes("重新登录") ||
+      msg.includes("登录已失效") ||
+      msg.includes("Invalid session") ||
+      msg.includes("Missing bearer token")
+    ) {
+      alert(msg);
+      window.location.href = "./login.html";
+      return;
+    }
+
+    alert(msg || fallback);
   }
-
-  alert(msg || fallback);
-}
 
   const FN = {
     createUser: "admin-create-user",
@@ -398,9 +409,6 @@ async function requireAdminPageAccess() {
 
     return rows;
   }
-
-  let custPage = 1;
-  const CUST_PAGE_SIZE = 5;
 
   const Api = {
     users: {
@@ -1160,14 +1168,14 @@ async function requireAdminPageAccess() {
     window.location.href = "./login.html";
   });
 
- function renderAll() {
-  renderUsers();
-  renderCustomers();
-}
-
-requireAdminPageAccess().then((ok) => {
-  if (ok) {
-    renderAll();
+  function renderAll() {
+    renderUsers();
+    renderCustomers();
   }
-});
+
+  requireAdminPageAccess().then((ok) => {
+    if (ok) {
+      renderAll();
+    }
+  });
 })();
