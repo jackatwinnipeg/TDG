@@ -118,11 +118,13 @@
     return true;
   }
 
-  function canonicalEmailFromDriverNumber(driverNumber, email = "") {
-    const normalizedEmail = safe(email).toLowerCase();
-    if (normalizedEmail) return normalizedEmail;
-    return `${safe(driverNumber).toLowerCase()}@tdg.com`;
+ function canonicalEmailFromDriverNumber(driverNumber, email = "") {
+  const normalizedEmail = safe(email).toLowerCase();
+  if (!normalizedEmail) {
+    throw new Error("请填写真实企业邮箱");
   }
+  return normalizedEmail;
+}
 
   async function callFn(name, payload, { method = "POST" } = {}) {
     const sb = getSb();
