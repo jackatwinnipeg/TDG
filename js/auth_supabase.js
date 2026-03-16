@@ -253,11 +253,11 @@
 
   try {
     // 先按 driver number / username 找真实邮箱
-   const { data: profile, error: profileError } = await sb
+  const { data: profile, error: profileError } = await sb
   .from("tdg_profiles")
   .select("id, username, driver_number, email, display_name, role, is_active, vehicle_no")
   .or(`driver_number.eq.${u},username.eq.${u}`)
-  .maybeSingle();
+  .maybeSingle();;
 
 console.log("login profile lookup", { u, profile, profileError });
 
