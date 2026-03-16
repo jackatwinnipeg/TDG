@@ -253,27 +253,28 @@
 
   try {
     // 先按 driver number / username 找真实邮箱
-    const { data: profile, error: profileError } = await sb
-      .from("tdg_profiles")
-      .select("id, username, driver_number, email, display_name, role, is_active, vehicle_no")
-      .or(`driver_number.eq.${u},username.eq.${u}`)
-      .single();
+   const { data: profile, error: profileError } = await sb
+  .from("tdg_profiles")
+  .select("id, username, driver_number, email, display_name, role, is_active, vehicle_no")
+  .or(`driver_number.eq.${u},username.eq.${u}`)
+  .maybeSingle();
 
-    if (profileError || !profile) {
-      clearSession();
-      return { ok: false, msg: "用户不存在或未配置邮箱" };
-    }
+console.log("login profile lookup", { u, profile, profileError });
 
-    if (!profile.email) {
-      clearSession();
-      return { ok: false, msg: "该用户未配置登录邮箱" };
-    }
+if (profileError) {
+  clearSession();
+  return { ok: false, msg: "登录前查询用户失败: " + profileError.message };
+}
 
-    if (profile.is_active === false) {
-      clearSession();
-      return { ok: false, msg: "用户已停用" };
-    }
+if (!profile) {
+  clearSession();
+  return { ok: false, msg: "用户不存在" };
+}
 
+if (!profile.email) {
+  clearSession();
+  return { ok: false, msg: "该用户未配置登录邮箱" };
+}
     // 用真实企业邮箱登录
     const { data, error } = await sb.auth.signInWithPassword({
       email: String(profile.email).trim().toLowerCase(),
