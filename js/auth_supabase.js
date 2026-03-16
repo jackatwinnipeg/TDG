@@ -138,7 +138,7 @@
       .from("tdg_profiles")
       .select("*")
       .eq("id", userId)
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
     return data;
@@ -243,87 +243,92 @@
   }
 
   async function authenticate(username, password) {
-  const u = safe(username).toLowerCase();
-  const p = safe(password);
+    const u = safe(username).trim().toLowerCase();
+    const p = safe(password);
 
-  const sb = getSupabaseClient();
-  if (!sb?.auth) {
-    return { ok: false, msg: "Supabase client not initialized" };
-  }
-
-  try {
-    // 先按 driver number / username 找真实邮箱
-  const { data: profile, error: profileError } = await sb
-  .from("tdg_profiles")
-  .select("id, username, driver_number, email, display_name, role, is_active, vehicle_no")
-  .or(`driver_number.eq.${u},username.eq.${u}`)
-  .maybeSingle();;
-
-console.log("login profile lookup", { u, profile, profileError });
-
-if (profileError) {
-  clearSession();
-  return { ok: false, msg: "登录前查询用户失败: " + profileError.message };
-}
-
-if (!profile) {
-  clearSession();
-  return { ok: false, msg: "用户不存在" };
-}
-
-if (!profile.email) {
-  clearSession();
-  return { ok: false, msg: "该用户未配置登录邮箱" };
-}
-    // 用真实企业邮箱登录
-    const { data, error } = await sb.auth.signInWithPassword({
-      email: String(profile.email).trim().toLowerCase(),
-      password: p,
-    });
-
-    if (error) {
-      clearSession();
-      return { ok: false, msg: error.message };
+    const sb = getSupabaseClient();
+    if (!sb?.auth) {
+      return { ok: false, msg: "Supabase client not initialized" };
     }
-
-    const userId = data?.user?.id;
-    if (!userId) {
-      clearSession();
-      return { ok: false, msg: "Login failed (no user id)" };
-    }
-
-    const freshProfile = await fetchProfileByUserId(userId);
-
-    const loginName =
-      safe(freshProfile?.driver_number) ||
-      safe(freshProfile?.username) ||
-      u;
-
-    const sess = {
-      userId,
-      username: loginName,
-      displayName: freshProfile?.display_name || loginName,
-      role: freshProfile?.role || "driver",
-      driverNumber: loginName,
-      vehicleNo: freshProfile?.vehicle_no || "",
-      loginAt: nowIso(),
-    };
-
-    setSession(sess);
-    syncProfileToLegacyLS();
 
     try {
-      await window.TDG_CUSTOMERS?.syncFromServer?.({ silent: true });
-    } catch (e) {
-      console.warn("Customer sync after login failed:", e);
-    }
+      const { data: profile, error: profileError } = await sb
+        .from("tdg_profiles")
+        .select("id, username, driver_number, email, display_name, role, is_active, vehicle_no")
+        .or(`driver_number.eq.${u},username.eq.${u}`)
+        .maybeSingle();
 
-    return { ok: true, user: freshProfile || { id: userId, username: loginName } };
-  } catch (e) {
-    clearSession();
-    return { ok: false, msg: "登录失败: " + (e?.message || e) };
+      console.log("login profile lookup", { u, profile, profileError });
+
+      if (profileError) {
+        clearSession();
+        return { ok: false, msg: "登录前查询用户失败: " + profileError.message };
+      }
+
+      if (!profile) {
+        clearSession();
+        return { ok: false, msg: "用户不存在" };
+      }
+
+      if (!profile.email) {
+        clearSession();
+        return { ok: false, msg: "该用户未配置登录邮箱" };
+      }
+
+      if (profile.is_active === false) {
+        clearSession();
+        return { ok: false, msg: "用户已停用" };
+      }
+
+      const { data, error } = await sb.auth.signInWithPassword({
+        email: String(profile.email).trim().toLowerCase(),
+        password: p,
+      });
+
+      if (error) {
+        clearSession();
+        return { ok: false, msg: error.message };
+      }
+
+      const userId = data?.user?.id;
+      if (!userId) {
+        clearSession();
+        return { ok: false, msg: "Login failed (no user id)" };
+      }
+
+      const freshProfile = await fetchProfileByUserId(userId);
+
+      const loginName =
+        safe(freshProfile?.driver_number) ||
+        safe(freshProfile?.username) ||
+        u;
+
+      const sess = {
+        userId,
+        username: loginName,
+        displayName: freshProfile?.display_name || loginName,
+        role: freshProfile?.role || "driver",
+        driverNumber: loginName,
+        vehicleNo: freshProfile?.vehicle_no || "",
+        loginAt: nowIso(),
+      };
+
+      setSession(sess);
+      syncProfileToLegacyLS();
+
+      try {
+        await window.TDG_CUSTOMERS?.syncFromServer?.({ silent: true });
+      } catch (e) {
+        console.warn("Customer sync after login failed:", e);
+      }
+
+      return { ok: true, user: freshProfile || { id: userId, username: loginName } };
+    } catch (e) {
+      clearSession();
+      return { ok: false, msg: "登录失败: " + (e?.message || e) };
+    }
   }
-}
+
   function requireAuth({ roles } = {}) {
     const sess = getSession();
 
