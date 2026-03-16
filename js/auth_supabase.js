@@ -243,77 +243,86 @@
   }
 
   async function authenticate(username, password) {
-    const u = safe(username).toLowerCase();
-    const p = safe(password);
+  const u = safe(username).toLowerCase();
+  const p = safe(password);
 
-    const sb = getSupabaseClient();
-    if (!sb?.auth) {
-      return { ok: false, msg: "Supabase client not initialized" };
-    }
-
-    try {
-      const email = `${u}@tdg.com`;
-
-      const { data, error } = await sb.auth.signInWithPassword({
-        email,
-        password: p,
-      });
-
-      if (error) {
-        clearSession();
-        clearSavedSupabaseSession();
-        clearTDGProfile();
-        return { ok: false, msg: error.message };
-      }
-
-      const user = data?.user || data?.session?.user;
-      const session = data?.session || null;
-      const userId = user?.id;
-
-      if (!userId || !session) {
-        clearSession();
-        clearSavedSupabaseSession();
-        clearTDGProfile();
-        return { ok: false, msg: "Login failed (missing session)" };
-      }
-
-      const profile = await fetchProfileByUserId(userId);
-
-      if (profile && profile.is_active === false) {
-        await sb.auth.signOut();
-        clearSession();
-        clearSavedSupabaseSession();
-        clearTDGProfile();
-        return { ok: false, msg: "用户已停用" };
-      }
-
-      saveSupabaseSession(session);
-      saveTDGProfile(profile);
-
-      const sess = buildTDGSession({
-        profile,
-        user,
-        session,
-      });
-
-      setSession(sess);
-      syncProfileToLegacyLS();
-
-      try {
-        await window.TDG_CUSTOMERS?.syncFromServer?.({ silent: true });
-      } catch (e) {
-        console.warn("Customer sync after login failed:", e);
-      }
-
-      return { ok: true, user: profile || { id: userId, username: sess.username } };
-    } catch (e) {
-      clearSession();
-      clearSavedSupabaseSession();
-      clearTDGProfile();
-      return { ok: false, msg: "登录失败: " + (e?.message || e) };
-    }
+  const sb = getSupabaseClient();
+  if (!sb?.auth) {
+    return { ok: false, msg: "Supabase client not initialized" };
   }
 
+  try {
+    // 先按 driver number / username 找真实邮箱
+    const { data: profile, error: profileError } = await sb
+      .from("tdg_profiles")
+      .select("id, username, driver_number, email, display_name, role, is_active, vehicle_no")
+      .or(`driver_number.eq.${u},username.eq.${u}`)
+      .single();
+
+    if (profileError || !profile) {
+      clearSession();
+      return { ok: false, msg: "用户不存在或未配置邮箱" };
+    }
+
+    if (!profile.email) {
+      clearSession();
+      return { ok: false, msg: "该用户未配置登录邮箱" };
+    }
+
+    if (profile.is_active === false) {
+      clearSession();
+      return { ok: false, msg: "用户已停用" };
+    }
+
+    // 用真实企业邮箱登录
+    const { data, error } = await sb.auth.signInWithPassword({
+      email: String(profile.email).trim().toLowerCase(),
+      password: p,
+    });
+
+    if (error) {
+      clearSession();
+      return { ok: false, msg: error.message };
+    }
+
+    const userId = data?.user?.id;
+    if (!userId) {
+      clearSession();
+      return { ok: false, msg: "Login failed (no user id)" };
+    }
+
+    const freshProfile = await fetchProfileByUserId(userId);
+
+    const loginName =
+      safe(freshProfile?.driver_number) ||
+      safe(freshProfile?.username) ||
+      u;
+
+    const sess = {
+      userId,
+      username: loginName,
+      displayName: freshProfile?.display_name || loginName,
+      role: freshProfile?.role || "driver",
+      driverNumber: loginName,
+      vehicleNo: freshProfile?.vehicle_no || "",
+      loginAt: nowIso(),
+    };
+
+    setSession(sess);
+    syncProfileToLegacyLS();
+
+    try {
+      await window.TDG_CUSTOMERS?.syncFromServer?.({ silent: true });
+    } catch (e) {
+      console.warn("Customer sync after login failed:", e);
+    }
+
+    return { ok: true, user: freshProfile || { id: userId, username: loginName } };
+  } catch (e) {
+    clearSession();
+    return { ok: false, msg: "登录失败: " + (e?.message || e) };
+  }
+}
   function requireAuth({ roles } = {}) {
     const sess = getSession();
 
