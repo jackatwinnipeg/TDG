@@ -252,11 +252,11 @@
     }
 
     try {
-      const { data: profile, error: profileError } = await sb
-        .from("tdg_profiles")
-        .select("id, username, driver_number, email, display_name, role, is_active, vehicle_no")
-        .or(`driver_number.eq.${u},username.eq.${u}`)
-        .maybeSingle();
+      const { data: rows, error: profileError } = await sb.rpc("lookup_login_profile", {
+  login_input: u,
+});
+
+const profile = Array.isArray(rows) ? rows[0] : rows;
 
       console.log("login profile lookup", { u, profile, profileError });
 
