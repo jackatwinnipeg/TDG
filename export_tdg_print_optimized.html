@@ -608,28 +608,42 @@
         }
 
         // ===== 表格 =====
-        const rows = records
-          .slice()
-          .sort((a, b) => {
-            const ta =
-              Date.parse(
-                a.arrivalTime ||
-                  a.completedAt ||
-                  a.updatedAt ||
-                  a.createdAt ||
-                  "",
-              ) || 0;
-            const tb =
-              Date.parse(
-                b.arrivalTime ||
-                  b.completedAt ||
-                  b.updatedAt ||
-                  b.createdAt ||
-                  "",
-              ) || 0;
-            return ta - tb; // oldest -> newest
-          })
-          .map(buildRow);
+        function getSortTimeValue(r) {
+  const raw =
+    r.arrivalTime || r.arrive || r.completedAt || r.updatedAt || r.createdAt || "";
+
+  if (!raw) return Number.MAX_SAFE_INTEGER;
+
+  // 先优先处理 "HH:mm" / "H:mm"
+  const s = String(raw).trim();
+  const hm = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (hm) {
+    const h = Number(hm[1]);
+    const m = Number(hm[2]);
+    if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+      return h * 60 + m; // 按当天分钟数排序
+    }
+  }
+
+  // 再处理时间戳
+  if (/^\d{10,13}$/.test(s)) {
+    const ms = s.length === 10 ? Number(s) * 1000 : Number(s);
+    if (Number.isFinite(ms)) return ms;
+  }
+
+  // 最后尝试标准日期字符串
+  const t = Date.parse(s);
+  if (!Number.isNaN(t)) return t;
+
+  return Number.MAX_SAFE_INTEGER;
+}
+
+const rows = records
+  .slice()
+  .sort((a, b) => {
+    return getSortTimeValue(a) - getSortTimeValue(b); // 最早 -> 最晚
+  })
+  .map(buildRow);
 
         // Compute running balance
         let running = num(header.tdgVolume || header.tdgStartVolume || 0); // kg
