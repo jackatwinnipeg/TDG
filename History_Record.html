@@ -602,7 +602,23 @@
           },
           { passive: true }
         );
+$("btnDailyLog")?.addEventListener("click", () => {
+  const picked =
+    $("qDateFrom")?.value ||
+    $("qDateTo")?.value ||
+    new Date().toISOString().slice(0, 10);
 
+  const date = window.prompt("Enter date (YYYY-MM-DD)", picked);
+  if (!date) return;
+
+  const v = String(date).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+    alert("Invalid date format. Please use YYYY-MM-DD.");
+    return;
+  }
+
+  window.open(`./tdg_print.html?date=${encodeURIComponent(v)}`, "_blank");
+});
         $("btnNext")?.addEventListener(
           "click",
           () => {
