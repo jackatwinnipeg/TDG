@@ -95,13 +95,13 @@
             <div class="tag" id="countTag">0 records</div>
           </div>
           <div style="display: flex; gap: 8px; flex-wrap: wrap">
-  <button class="btn" id="btnDailyLog" type="button">
-    TDG Daily Log
-  </button>
-  <button class="btn secondary" id="btnBack" type="button">
-    ← Back
-  </button>
-</div>
+            <button class="btn" id="btnDailyLog" type="button">
+              TDG Daily Log
+            </button>
+            <button class="btn secondary" id="btnBack" type="button">
+              ← Back
+            </button>
+          </div>
         </div>
       </header>
 
@@ -114,7 +114,10 @@
             <div class="grid4">
               <div>
                 <label for="qText">Keyword</label>
-                <input id="qText" placeholder="Acc No. / Name / Address / Notes" />
+                <input
+                  id="qText"
+                  placeholder="Acc No. / Name / Address / Notes"
+                />
               </div>
 
               <div>
@@ -247,6 +250,14 @@
           .replaceAll("'", "&#039;");
       }
 
+      function getLocalDateString() {
+        const d = new Date();
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, "0");
+        const dd = String(d.getDate()).padStart(2, "0");
+        return `${yyyy}-${mm}-${dd}`;
+      }
+
       function getSupabaseClientStrict() {
         const sb = window.supabaseClient;
         if (!sb?.from || !sb?.auth) {
@@ -345,11 +356,6 @@
             r.completedAt || r.arrivalTime || r.createdAt || r.date || 0
           ).getTime() || 0
         );
-      }
-
-      function hideResultPanel() {
-        const panel = $("resultPanel");
-        if (panel) panel.style.display = "none";
       }
 
       function showResultPanel() {
@@ -471,6 +477,24 @@
         window.location.href = url;
       }
 
+      function openDailyLog() {
+        const picked =
+          $("qDateFrom")?.value ||
+          $("qDateTo")?.value ||
+          getLocalDateString();
+
+        const date = window.prompt("Enter date (YYYY-MM-DD)", picked);
+        if (!date) return;
+
+        const v = String(date).trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+          alert("Invalid date format. Please use YYYY-MM-DD.");
+          return;
+        }
+
+        window.open(`./tdg_print.html?date=${encodeURIComponent(v)}`, "_blank");
+      }
+
       function render() {
         const list = _filtered.length ? _filtered : _all;
         const total = list.length;
@@ -533,13 +557,19 @@
 
                 <div class="kv" style="margin-top: 10px;">
                   <span>Time: ${escapeHtml(timeText || "-")}</span>
-                  <span>Driver: ${escapeHtml(safe(r.driverName || r.driverNumber) || "-")}</span>
+                  <span>Driver: ${escapeHtml(
+                    safe(r.driverName || r.driverNumber) || "-"
+                  )}</span>
                   <span>Vehicle: ${escapeHtml(safe(r.vehicleNo) || "-")}</span>
-                  <span>Acc No: ${escapeHtml(safe(r.accountNumber) || "-")}</span>
+                  <span>Acc No: ${escapeHtml(
+                    safe(r.accountNumber) || "-"
+                  )}</span>
                   <span>City: ${escapeHtml(safe(r.accountCity) || "-")}</span>
                   <span>Route: ${escapeHtml(safe(r.accountRoute) || "-")}</span>
                   <span>Week: ${escapeHtml(safe(r.weekCycle) || "-")}</span>
-                  <span>Delivered: ${escapeHtml(String(num(r.deliveredVolume)))}</span>
+                  <span>Delivered: ${escapeHtml(
+                    String(num(r.deliveredVolume))
+                  )}</span>
                 </div>
 
                 <div class="muted2">
@@ -584,15 +614,23 @@
         showResultPanel();
         render();
 
+        $("btnDailyLog")?.addEventListener("click", openDailyLog);
+
         $("btnBack")?.addEventListener("click", () => {
           window.location.href = "./index.html";
         });
 
-        $("btnSearch")?.addEventListener("click", applyFilters, { passive: true });
+        $("btnSearch")?.addEventListener("click", applyFilters, {
+          passive: true,
+        });
 
-        $("btnReset")?.addEventListener("click", () => {
-          resetFilters();
-        }, { passive: true });
+        $("btnReset")?.addEventListener(
+          "click",
+          () => {
+            resetFilters();
+          },
+          { passive: true }
+        );
 
         $("btnPrev")?.addEventListener(
           "click",
@@ -602,23 +640,7 @@
           },
           { passive: true }
         );
-$("btnDailyLog")?.addEventListener("click", () => {
-  const picked =
-    $("qDateFrom")?.value ||
-    $("qDateTo")?.value ||
-    new Date().toISOString().slice(0, 10);
 
-  const date = window.prompt("Enter date (YYYY-MM-DD)", picked);
-  if (!date) return;
-
-  const v = String(date).trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
-    alert("Invalid date format. Please use YYYY-MM-DD.");
-    return;
-  }
-
-  window.open(`./tdg_print.html?date=${encodeURIComponent(v)}`, "_blank");
-});
         $("btnNext")?.addEventListener(
           "click",
           () => {
