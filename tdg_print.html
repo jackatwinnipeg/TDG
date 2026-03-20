@@ -6,214 +6,380 @@
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
-    <meta name="color-scheme" content="dark" />
-    <meta name="theme-color" content="#0b1020" />
-    <link rel="icon" href="./favicon.ico" sizes="any" />
-    <link rel="shortcut icon" href="./favicon.ico" />
-    <link rel="stylesheet" href="./css/style.css" />
-    <title>History Records</title>
+    <title>TDG Print (1:1)</title>
 
     <style>
-      .grid4 {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 12px;
+      @page {
+        size: A4 landscape;
+        margin: 8mm;
       }
-      @media (max-width: 960px) {
-        .grid4 {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
+      @media print {
+        .no-print {
+          display: none !important;
         }
-      }
-      @media (max-width: 560px) {
-        .grid4 {
-          grid-template-columns: 1fr;
+        body {
+          background: #fff;
         }
       }
 
-      .rowCard {
-        padding: 12px;
-        border-radius: 16px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        background: rgba(0, 0, 0, 0.14);
-        margin-top: 10px;
+      body {
+        margin: 0;
+        background: #eee;
+        font-family: Arial, Helvetica, sans-serif;
+        color: #000;
       }
-      .rowTop {
-        display: flex;
-        justify-content: space-between;
-        gap: 10px;
-        flex-wrap: wrap;
+      .sheet {
+        width: 277mm;
+        background: #fff;
+        margin: 12px auto;
+        padding: 0;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
       }
-      .kv {
+
+      .box {
+        border: 1px solid #000;
+      }
+      .row {
         display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
+      }
+      .col {
+        display: flex;
+        flex-direction: column;
+      }
+      .p6 {
+        padding: 6px;
+      }
+      .p8 {
+        padding: 8px;
+      }
+      .p10 {
+        padding: 10px;
+      }
+      .tight {
+        line-height: 1.1;
+      }
+      .small {
+        font-size: 10px;
+      }
+      .xs {
+        font-size: 9px;
+      }
+      .title {
+        font-weight: 700;
+        font-size: 14px;
+        text-align: center;
+        padding: 6px 0;
+      }
+      .muted {
         opacity: 0.9;
-        font-size: 13px;
       }
-      .kv span {
-        padding: 2px 8px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.04);
+      .label {
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: none;
       }
-      .muted2 {
-        opacity: 0.75;
-        font-size: 13px;
-        margin-top: 6px;
+      .value {
+        font-size: 11px;
+        min-height: 14px;
+      }
+      .gridline {
+        border-top: 1px solid #000;
+      }
+      .gridline-v {
+        border-left: 1px solid #000;
       }
 
-      .pager {
-        display: flex;
-        gap: 8px;
-        align-items: center;
-        justify-content: flex-end;
-        margin-top: 12px;
-        flex-wrap: wrap;
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+        font-size: 10px;
       }
-      .mono {
+      th,
+      td {
+        border: 1px solid #000;
+        padding: 2px 3px;
+        vertical-align: top;
+        word-wrap: break-word;
+      }
+      th {
+        font-weight: 700;
+        text-align: center;
+      }
+      .center {
+        text-align: center;
+      }
+      .right {
+        text-align: right;
+      }
+
+      table thead th:nth-child(4),
+      table tbody td:nth-child(4),
+      table thead th:nth-child(5),
+      table tbody td:nth-child(5),
+      table thead th:nth-child(6),
+      table tbody td:nth-child(6) {
+        text-align: center;
+      }
+
+      .toolbar {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 12px;
+        position: sticky;
+        top: 0;
+        background: #fff;
+        border-bottom: 1px solid #ddd;
+      }
+      .btn {
+        border: 1px solid #111;
+        background: #111;
+        color: #fff;
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-weight: 700;
+        min-height: 44px;
+        cursor: pointer;
+      }
+      .btn.secondary {
+        background: #fff;
+        color: #111;
+      }
+      .warn {
+        color: #b00020;
+        font-weight: 700;
+      }
+
+      .bg-watermark {
+        position: relative;
+      }
+      .bg-watermark::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        opacity: 0.12;
+        pointer-events: none;
+      }
+      .bg-watermark > * {
+        position: relative;
+        z-index: 1;
+      }
+
+      .kv {
+        display: grid;
+        grid-template-columns: 92px 1fr;
+        align-items: center;
+        column-gap: 6px;
+      }
+      .kv .label {
+        margin: 0;
+        white-space: nowrap;
+      }
+      .kv .value {
+        margin: 0;
+        text-align: left;
+        min-height: 14px;
+      }
+      .inline-info {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 4px;
+        white-space: nowrap;
+      }
+
+      .inline-info .label {
+        margin: 0;
+        white-space: nowrap;
+      }
+
+      .inline-info .value {
+        margin: 0;
+        min-height: 14px;
+        white-space: nowrap;
+      }
+
+      .inline-info .label::after {
+        content: ":";
+        margin-left: 2px;
+      }
+      .inline-info .value {
+        font-size: 16px;
+        font-weight: 700;
         font-family:
-          ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-          "Liberation Mono", "Courier New", monospace;
+          "SimHei", "Microsoft YaHei", Arial, Helvetica, sans-serif;
+        text-align: center;
+        flex: 1;
+      }
+
+      .status {
+        padding: 18px;
+        font-size: 14px;
       }
     </style>
   </head>
 
   <body>
-    <div class="container">
-      <header>
-        <div
-          style="
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 12px;
-          "
-        >
-          <div style="display: flex; align-items: center; gap: 12px">
-            <h1 style="margin: 0; font-size: 1.5rem">History Records</h1>
-            <div class="tag" id="countTag">0 records</div>
+    <div class="toolbar no-print">
+      <div>
+        <b>TDG Print (HTML 1:1)</b>
+      </div>
+      <div style="display: flex; gap: 10px; flex-wrap: wrap">
+        <button class="btn secondary" id="btnClose" type="button">Close</button>
+        <button class="btn" id="btnPrint" type="button">
+          Print / Save PDF
+        </button>
+      </div>
+    </div>
+
+    <div class="sheet box bg-watermark">
+      <div class="title box">
+        Transportation of Dangerous Goods Shipping Document
+      </div>
+
+      <div class="row box">
+        <div class="col p8" style="flex: 1">
+          <div class="gridline" style="margin-top: 6px"></div>
+          <div class="row" style="gap: 10px; margin-top: 6px">
+            <div style="flex: 1">
+              <div class="label">Consignor:</div>
+              <div class="value" id="consignorName">Linde Canada Inc.</div>
+            </div>
+            <div style="width: 200px">
+              <div class="label">CHECK LOADED PRODUCT</div>
+              <div class="small">
+                <label><input type="checkbox" id="chkO2" /> O2</label>&nbsp;
+                <label><input type="checkbox" id="chkN2" /> N2</label>&nbsp;
+                <label><input type="checkbox" id="chkAr" /> Ar</label>&nbsp;
+                <label><input type="checkbox" id="chkCO2" /> CO2</label>
+              </div>
+            </div>
           </div>
-          <div style="display: flex; gap: 8px; flex-wrap: wrap">
-            <button class="btn" id="btnDailyLog" type="button">
-              TDG Daily Log
-            </button>
-            <button class="btn secondary" id="btnBack" type="button">
-              ← Back
-            </button>
+          <div class="small tight">
+            <b>ERAP</b> 2-0821 AND 24 HOUR NUMBER: <b>800-363-0042</b>
+          </div>
+          <div class="gridline" style="margin-top: 6px"></div>
+          <div class="row" style="gap: 10px; margin-top: 6px">
+            <div style="flex: 1">
+              <div class="label">PRODUCT DESCRIPTION</div>
+              <div class="xs tight">
+                UN1073, OXYGEN, REFRIGERATED LIQUID, 2.2(5.1)<br />
+                UN1977, NITROGEN, REFRIGERATED LIQUID, 2.2<br />
+                UN1951, ARGON, REFRIGERATED LIQUID, 2.2<br />
+                UN2187, CARBON DIOXIDE, REFRIGERATED LIQUID, 2.2
+              </div>
+            </div>
           </div>
         </div>
-      </header>
 
-      <main class="layout">
-        <section class="card" aria-label="History Filters">
-          <div class="hd">
-            <div class="tag">Query</div>
-          </div>
-          <div class="bd">
-            <div class="grid4">
-              <div>
-                <label for="qText">Keyword</label>
-                <input id="qText" placeholder="Acc No. / Name / Address / Notes" />
-              </div>
-
-              <div>
-                <label for="qDateFrom">Date From</label>
-                <input id="qDateFrom" type="date" />
-              </div>
-
-              <div>
-                <label for="qDateTo">Date To</label>
-                <input id="qDateTo" type="date" />
-              </div>
-
-              <div>
-                <label for="qWeekCycle">Week Cycle</label>
-                <select id="qWeekCycle">
-                  <option value="">All</option>
-                  <option value="1">1</option>
-                  <option value="2">2</option>
-                  <option value="3">3</option>
-                  <option value="4">4</option>
-                  <option value="5">5</option>
-                  <option value="6">6</option>
-                  <option value="7">7</option>
-                  <option value="8">8</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="grid4" style="margin-top: 12px">
-              <div>
-                <label for="qDriver">Driver Number</label>
-                <input id="qDriver" placeholder="D-001 / (auto filled)" />
-              </div>
-              <div>
-                <label for="qVehicle">Vehicle No</label>
-                <input id="qVehicle" />
-              </div>
-              <div>
-                <label for="qAccNo">Account Number</label>
-                <input id="qAccNo" placeholder="1001" />
-              </div>
-              <div>
-                <label for="qCity">City</label>
-                <input id="qCity" placeholder="Winnipeg" />
-              </div>
-            </div>
-
-            <div
-              style="
-                display: flex;
-                gap: 8px;
-                margin-top: 12px;
-                flex-wrap: wrap;
-                justify-content: flex-end;
-              "
-            >
-              <button class="btn" id="btnReset" type="button">Reset</button>
-              <button class="btn ok" id="btnSearch" type="button">
-                Search
-              </button>
-            </div>
-
-            <div class="divider"></div>
-          </div>
-        </section>
-
-        <aside
-          class="card"
-          aria-label="History Result"
-          id="resultPanel"
-          style="display: none"
-        >
-          <div class="hd">
-            <div
-              style="
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-              "
-            >
-              <div class="tag">Result</div>
-              <div class="muted mono" id="pageText">—</div>
-            </div>
+        <div class="col box" style="width: 260px">
+          <div class="p6 kv">
+            <span class="label">Date:</span>
+            <span class="value" id="hdrDate"></span>
           </div>
 
-          <div class="bd">
-            <div id="resultBox"></div>
+          <div class="gridline"></div>
 
-            <div class="pager">
-              <button class="btn secondary" id="btnPrev" type="button">
-                Prev
-              </button>
-              <button class="btn secondary" id="btnNext" type="button">
-                Next
-              </button>
-            </div>
+          <div class="p6 kv">
+            <span class="label">Vehicle No:</span>
+            <span class="value" id="hdrVehicle"></span>
           </div>
-        </aside>
-      </main>
+
+          <div class="gridline"></div>
+
+          <div class="p6 kv">
+            <span class="label">Start km:</span>
+            <span class="value" id="hdrStartKm"></span>
+          </div>
+
+          <div class="gridline"></div>
+
+          <div class="p6 kv">
+            <span class="label">End km:</span>
+            <span class="value" id="hdrEndKm"></span>
+          </div>
+
+          <div class="gridline"></div>
+
+          <div class="p6 kv">
+            <span class="label">Total km:</span>
+            <span class="value" id="hdrTotalKm"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="row box">
+        <div class="col p6 inline-info" style="width: 220px">
+          <div class="label">SHIFT TIME START</div>
+          <div class="value" id="hdrShiftStart"></div>
+        </div>
+
+        <div class="col p6 gridline-v inline-info" style="width: 220px">
+          <div class="label">SHIFT TIME FINISH</div>
+          <div class="value" id="hdrShiftFinish"></div>
+        </div>
+
+        <div class="col p6 gridline-v inline-info" style="width: 220px">
+          <div class="label">TDG START VOLUME(KGs)</div>
+          <div class="value" id="hdrTdgStart"></div>
+        </div>
+
+        <div class="col p6 gridline-v inline-info" style="flex: 1">
+          <div class="label">TDG REMAINING VOLUME(KGs)</div>
+          <div class="value" id="hdrTdgRemaining"></div>
+        </div>
+      </div>
+
+      <div class="box">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 50px">ARRIVE</th>
+              <th style="width: 401px">CUSTOMER/LOCATION OR ACTIVITY</th>
+              <th style="width: 90px">ACCOUNT #</th>
+              <th style="width: 90px">DELIVERED(Lbs)</th>
+              <th style="width: 80px">BALANCE(Lbs)</th>
+              <th>NOTES</th>
+            </tr>
+          </thead>
+          <tbody id="tbody">
+            <tr>
+              <td colspan="6" class="status" id="loadingCell">Loading...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="box p8">
+        <div class="small tight">
+          I hereby declare that the contents of this consignment are fully and
+          accurately described above by the proper shipping name, are properly
+          classified and packaged, have dangerous goods safety marks properly
+          affixed or displayed on them, and are in all respects in proper
+          condition for transport according to the Transportation of Dangerous
+          Goods Regulations.
+        </div>
+        <div class="row" style="margin-top: 10px; gap: 10px">
+          <div class="col" style="flex: 1">
+            <div class="label">Consignor: (print employee name)</div>
+            <div class="box p6" style="min-height: 24px" id="sigPrint"></div>
+          </div>
+          <div class="col" style="flex: 1">
+            <div class="label">Signature:</div>
+            <div class="box p6" style="min-height: 24px" id="sigSign"></div>
+          </div>
+          <div class="col" style="width: 220px">
+            <div class="label">Date:</div>
+            <div class="box p6" style="min-height: 24px" id="sigDate"></div>
+          </div>
+        </div>
+        <div class="small muted" style="margin-top: 8px">
+          In the U.S. Call CHEMTREC at 1-800-424-9300 for emergency response
+          instructions.
+        </div>
+      </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -222,29 +388,80 @@
     <script src="./js/auth_supabase.js"></script>
 
     <script>
-      const $ = (id) => document.getElementById(id);
+      const KG_TO_LBS = 2.20462;
+      const LBS_TO_KG = 0.453592;
+
+      function lbsToKg(v) {
+        return (Number(v) || 0) * LBS_TO_KG;
+      }
+
+      function kgToLbs(v) {
+        return (Number(v) || 0) * KG_TO_LBS;
+      }
+
       const safe = (v) => String(v ?? "").trim();
-      const norm = (v) => safe(v).toLowerCase();
-      const num = (v) => {
-        const n = Number(v);
-        return Number.isFinite(n) ? n : 0;
+
+      const parseNum = (v) => {
+        const s = String(v ?? "")
+          .replace(/,/g, "")
+          .trim();
+        if (!s) return null;
+        const n = Number(s);
+        return Number.isFinite(n) ? n : null;
       };
 
-      const LS_HISTORY_VIEW = "tdg_history_view_v1";
-      const LS_HISTORY_VIEW_INDEX = "tdg_history_view_index_v1";
+      function num(v) {
+        const s = String(v == null ? "" : v)
+          .trim()
+          .replace(/,/g, "");
+        if (!s) return 0;
+        const m = s.match(/-?\d+(?:\.\d+)?/);
+        const n = m ? Number(m[0]) : Number(s);
+        return Number.isFinite(n) ? n : 0;
+      }
 
-      let _all = [];
-      let _filtered = [];
-      let _page = 1;
-      const PAGE_SIZE = 20;
+      function pad2(n) {
+        return String(n).padStart(2, "0");
+      }
 
-      function escapeHtml(s) {
-        return String(s ?? "")
-          .replaceAll("&", "&amp;")
-          .replaceAll("<", "&lt;")
-          .replaceAll(">", "&gt;")
-          .replaceAll('"', "&quot;")
-          .replaceAll("'", "&#039;");
+      function formatTime(v) {
+        if (v == null) return "";
+
+        if (v instanceof Date && !isNaN(v)) {
+          return pad2(v.getHours()) + ":" + pad2(v.getMinutes());
+        }
+
+        const s = String(v).trim();
+        if (!s) return "";
+
+        const m = s.match(/^(\d{1,2}):(\d{2})$/);
+        if (m) return pad2(m[1]) + ":" + m[2];
+
+        if (s.length >= 16 && s[10] === "T") return s.slice(11, 16);
+
+        if (/^\d{10,13}$/.test(s)) {
+          const ms = s.length === 10 ? Number(s) * 1000 : Number(s);
+          const d = new Date(ms);
+          if (!isNaN(d)) return pad2(d.getHours()) + ":" + pad2(d.getMinutes());
+        }
+
+        const t = Date.parse(s);
+        if (!Number.isNaN(t)) {
+          const d = new Date(t);
+          return pad2(d.getHours()) + ":" + pad2(d.getMinutes());
+        }
+
+        const m2 = s.match(/(\d{1,2}):(\d{2})/);
+        if (m2) return pad2(m2[1]) + ":" + m2[2];
+
+        return "";
+      }
+
+      function getQueryDate() {
+        const date = new URLSearchParams(window.location.search).get("date");
+        if (!date) return "";
+        const v = String(date).trim();
+        return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : "";
       }
 
       function getSupabaseClientStrict() {
@@ -255,42 +472,166 @@
         return sb;
       }
 
-      function mapSupabaseRecord(r) {
+      function getSortTimeValue(r) {
+        const raw =
+          r.arrival_time ||
+          r.arrivalTime ||
+          r.completed_at ||
+          r.completedAt ||
+          r.created_at ||
+          r.createdAt ||
+          "";
+
+        if (!raw) return Number.MAX_SAFE_INTEGER;
+
+        const s = String(raw).trim();
+        const hm = s.match(/^(\d{1,2}):(\d{2})$/);
+        if (hm) {
+          const h = Number(hm[1]);
+          const m = Number(hm[2]);
+          if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+            return h * 60 + m;
+          }
+        }
+
+        if (/^\d{10,13}$/.test(s)) {
+          const ms = s.length === 10 ? Number(s) * 1000 : Number(s);
+          if (Number.isFinite(ms)) return ms;
+        }
+
+        const t = Date.parse(s);
+        if (!Number.isNaN(t)) return t;
+
+        return Number.MAX_SAFE_INTEGER;
+      }
+
+      function buildRow(r) {
+        const arrive = formatTime(
+          r.arrival_time || r.arrivalTime || r.completed_at || r.completedAt || "",
+        );
+
+        const customer = safe(r.account_name || r.accountName || "");
+        const addr = safe(r.account_address || r.accountAddress || "");
+        const city = safe(r.account_city || r.accountCity || "");
+        const route = safe(r.account_route || r.accountRoute || "");
+        const acct = safe(r.account_number || r.accountNumber || "");
+        const delivered = safe(r.delivered_volume ?? r.deliveredVolume ?? "");
+        const notes = safe(r.notes || "");
+
+        const loc = [customer, addr, city, route].filter(Boolean).join(" / ");
+
         return {
-          remoteId: r.id,
-          clientRecordId: r.client_record_id || "",
-          ownerId: r.owner_id || "",
-          driverNumber: r.driver_number || "",
-          driverName: r.driver_name || "",
-          date: r.work_date || "",
-          vehicleNo: r.vehicle_no || "",
-          weekCycle: r.week_cycle ?? "",
-          shiftStart: r.shift_start || "",
-          shiftFinish: r.shift_finish || "",
-          arrivalTime: r.arrival_time || "",
-          completedAt: r.completed_at || r.created_at || "",
-          accountNumber: r.account_number || "",
-          accountName: r.account_name || "",
-          accountAddress: r.account_address || "",
-          accountCity: r.account_city || "",
-          accountRoute: r.account_route || "",
-          tdgVolume: r.tdg_volume ?? 0,
-          deliveredVolume: r.delivered_volume ?? 0,
-          notes: r.notes || "",
-          synced: true,
-          createdAt: r.created_at || "",
-          raw: r.raw || null,
+          arrive,
+          customerLocation: loc,
+          accountNumber: acct,
+          delivered,
+          balance: "",
+          notes,
         };
       }
 
-      async function loadRecordsFromSupabase() {
+      function setCheckboxesFromRows(rows) {
+        const text = JSON.stringify(rows).toLowerCase();
+
+        const hasO2 =
+          text.includes("oxygen") || text.includes("un1073") || text.includes('"product_oxygen":true');
+        const hasN2 =
+          text.includes("nitrogen") || text.includes("un1977") || text.includes('"product_nitrogen":true');
+        const hasAr =
+          text.includes("argon") || text.includes("un1951") || text.includes('"product_argon":true');
+        const hasCO2 =
+          text.includes("carbon dioxide") || text.includes("co2") || text.includes("un2187");
+
+        document.getElementById("chkO2").checked = hasO2;
+        document.getElementById("chkN2").checked = hasN2;
+        document.getElementById("chkAr").checked = hasAr;
+        document.getElementById("chkCO2").checked = hasCO2 || (!hasO2 && !hasN2 && !hasAr);
+      }
+
+      function fillHeader(date, records) {
+        const first = records[0] || {};
+
+        const startKm = safe(first.start_km ?? first.raw?.startKm ?? "");
+        const endKm = safe(first.end_km ?? first.raw?.endKm ?? "");
+        const totalKm =
+          startKm !== "" && endKm !== ""
+            ? String(num(endKm) - num(startKm))
+            : safe(first.total_km ?? first.raw?.totalKm ?? "");
+
+        const shiftStart = safe(first.shift_start ?? first.raw?.shiftStart ?? "");
+        const shiftFinish = safe(first.shift_finish ?? first.raw?.shiftFinish ?? "");
+        const vehicleNo = safe(first.vehicle_no ?? first.raw?.vehicleNo ?? "");
+        const driverName = safe(first.driver_name ?? first.raw?.driverName ?? "");
+        const signature = safe(first.signature ?? first.raw?.signature ?? first.raw?.signatureText ?? "");
+        const tdgStartVolume = safe(first.tdg_volume ?? first.raw?.tdgVolume ?? first.raw?.tdgStartVolume ?? "");
+
+        document.getElementById("hdrDate").textContent = date;
+        document.getElementById("hdrVehicle").textContent = vehicleNo;
+        document.getElementById("hdrStartKm").textContent = startKm;
+        document.getElementById("hdrEndKm").textContent = endKm;
+        document.getElementById("hdrTotalKm").textContent = totalKm;
+        document.getElementById("hdrShiftStart").textContent = shiftStart;
+        document.getElementById("hdrShiftFinish").textContent = shiftFinish;
+        document.getElementById("hdrTdgStart").textContent = tdgStartVolume;
+
+        document.getElementById("sigPrint").textContent = driverName;
+        document.getElementById("sigSign").textContent = signature;
+        document.getElementById("sigDate").textContent = date;
+      }
+
+      function fillTable(records) {
+        const rows = records
+          .slice()
+          .sort((a, b) => getSortTimeValue(a) - getSortTimeValue(b))
+          .map(buildRow);
+
+        const first = records[0] || {};
+        let running = num(first.tdg_volume ?? first.raw?.tdgVolume ?? first.raw?.tdgStartVolume ?? 0);
+
+        for (let i = 0; i < rows.length; i++) {
+          const deliveredLbs = num(rows[i].delivered);
+          running -= lbsToKg(deliveredLbs);
+          const balanceLbs = Math.round(kgToLbs(running));
+          rows[i].balance = String(balanceLbs);
+        }
+
+        const tdgRemainKg = Math.round(running);
+        document.getElementById("hdrTdgRemaining").textContent =
+          Number.isFinite(tdgRemainKg) ? String(tdgRemainKg) : "";
+
+        const tbody = document.getElementById("tbody");
+        if (!rows.length) {
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="6" class="status">No records found for this date.</td>
+            </tr>
+          `;
+          return;
+        }
+
+        tbody.innerHTML = rows
+          .map(
+            (r) => `
+            <tr>
+              <td class="center">${safe(r.arrive)}</td>
+              <td>${safe(r.customerLocation)}</td>
+              <td class="center">${safe(r.accountNumber)}</td>
+              <td>${safe(r.delivered)}</td>
+              <td>${safe(r.balance)}</td>
+              <td>${safe(r.notes)}</td>
+            </tr>
+          `,
+          )
+          .join("");
+      }
+
+      async function loadByDate(date) {
         const sb = getSupabaseClientStrict();
 
         const { data, error } = await sb
           .from("tdg_records")
           .select(`
             id,
-            client_record_id,
             owner_id,
             driver_number,
             driver_name,
@@ -312,329 +653,72 @@
             raw,
             created_at
           `)
-          .order("created_at", { ascending: false });
+          .eq("work_date", date)
+          .order("created_at", { ascending: true });
 
-        if (error) {
-          console.error("loadRecordsFromSupabase error:", error);
-          throw error;
-        }
-
-        return (data || []).map(mapSupabaseRecord);
+        if (error) throw error;
+        return data || [];
       }
 
-      function toDateValue(v) {
-        if (!v) return null;
-        const d = new Date(v);
-        return Number.isNaN(d.getTime()) ? null : d;
-      }
+      async function fill() {
+        const date = getQueryDate();
+        const tbody = document.getElementById("tbody");
 
-      function fmtDateTime(v) {
-        const d = toDateValue(v);
-        if (!d) return safe(v);
-        const yyyy = d.getFullYear();
-        const mm = String(d.getMonth() + 1).padStart(2, "0");
-        const dd = String(d.getDate()).padStart(2, "0");
-        const hh = String(d.getHours()).padStart(2, "0");
-        const mi = String(d.getMinutes()).padStart(2, "0");
-        return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
-      }
-
-      function getSortKey(r) {
-        return (
-          new Date(
-            r.completedAt || r.arrivalTime || r.createdAt || r.date || 0
-          ).getTime() || 0
-        );
-      }
-
-      function hideResultPanel() {
-        const panel = $("resultPanel");
-        if (panel) panel.style.display = "none";
-      }
-
-      function showResultPanel() {
-        const panel = $("resultPanel");
-        if (panel) panel.style.display = "";
-      }
-
-      function updateCountTag(count) {
-        const el = $("countTag");
-        if (el) el.textContent = `${count} records`;
-      }
-
-      function resetFiltersToDefault(sess) {
-        if ($("qText")) $("qText").value = "";
-        if ($("qDateFrom")) $("qDateFrom").value = "";
-        if ($("qDateTo")) $("qDateTo").value = "";
-        if ($("qWeekCycle")) $("qWeekCycle").value = "";
-        if ($("qVehicle")) $("qVehicle").value = "";
-        if ($("qAccNo")) $("qAccNo").value = "";
-        if ($("qCity")) $("qCity").value = "";
-
-        const dn = safe(sess?.driverNumber || sess?.username || "");
-        if ($("qDriver")) $("qDriver").value = dn;
-      }
-
-      function applyFilters() {
-        const qText = norm($("qText")?.value);
-        const qDriver = norm($("qDriver")?.value);
-        const qVehicle = norm($("qVehicle")?.value);
-        const qAccNo = norm($("qAccNo")?.value);
-        const qCity = norm($("qCity")?.value);
-        const qWeekCycle = safe($("qWeekCycle")?.value);
-        const qDateFrom = safe($("qDateFrom")?.value);
-        const qDateTo = safe($("qDateTo")?.value);
-
-        _filtered = _all.filter((r) => {
-          if (
-            qDriver &&
-            !norm(r.driverNumber).includes(qDriver) &&
-            !norm(r.driverName).includes(qDriver)
-          ) {
-            return false;
-          }
-
-          if (qVehicle && !norm(r.vehicleNo).includes(qVehicle)) {
-            return false;
-          }
-
-          if (qAccNo && !norm(r.accountNumber).includes(qAccNo)) {
-            return false;
-          }
-
-          if (qCity && !norm(r.accountCity).includes(qCity)) {
-            return false;
-          }
-
-          if (qWeekCycle && safe(r.weekCycle) !== qWeekCycle) {
-            return false;
-          }
-
-          if (qDateFrom || qDateTo) {
-            const d = safe(r.date);
-            if (qDateFrom && d < qDateFrom) return false;
-            if (qDateTo && d > qDateTo) return false;
-          }
-
-          if (qText) {
-            const hay = [
-              r.accountNumber,
-              r.accountName,
-              r.accountAddress,
-              r.accountCity,
-              r.accountRoute,
-              r.driverNumber,
-              r.driverName,
-              r.vehicleNo,
-              r.notes,
-              r.clientRecordId,
-            ]
-              .map(norm)
-              .join(" | ");
-
-            if (!hay.includes(qText)) return false;
-          }
-
-          return true;
-        });
-
-        _filtered.sort((a, b) => getSortKey(b) - getSortKey(a));
-        _page = 1;
-        showResultPanel();
-        render();
-      }
-
-      function resetFilters() {
-        if ($("qText")) $("qText").value = "";
-        if ($("qDateFrom")) $("qDateFrom").value = "";
-        if ($("qDateTo")) $("qDateTo").value = "";
-        if ($("qWeekCycle")) $("qWeekCycle").value = "";
-        if ($("qDriver")) $("qDriver").value = "";
-        if ($("qVehicle")) $("qVehicle").value = "";
-        if ($("qAccNo")) $("qAccNo").value = "";
-        if ($("qCity")) $("qCity").value = "";
-
-        _filtered = [];
-        _page = 1;
-        showResultPanel();
-        render();
-      }
-
-      function openDetail(record) {
-        localStorage.setItem(LS_HISTORY_VIEW, JSON.stringify(record));
-        localStorage.removeItem(LS_HISTORY_VIEW_INDEX);
-
-        const url = record?.remoteId
-          ? `./history_detail.html?id=${encodeURIComponent(record.remoteId)}`
-          : "./history_detail.html";
-
-        window.location.href = url;
-      }
-
-      function render() {
-        const list = _filtered.length ? _filtered : _all;
-        const total = list.length;
-        const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-        _page = Math.min(Math.max(1, _page), totalPages);
-
-        const start = (_page - 1) * PAGE_SIZE;
-        const items = list.slice(start, start + PAGE_SIZE);
-
-        updateCountTag(total);
-
-        const pageText = $("pageText");
-        if (pageText) {
-          pageText.textContent = total
-            ? `Showing ${start + 1}-${Math.min(start + PAGE_SIZE, total)} of ${total} · Page ${_page}/${totalPages}`
-            : "No records";
-        }
-
-        if ($("btnPrev")) $("btnPrev").disabled = _page === 1;
-        if ($("btnNext")) $("btnNext").disabled = _page === totalPages;
-
-        const box = $("resultBox");
-        if (!box) return;
-
-        if (!items.length) {
-          box.innerHTML = '<div class="muted">No records.</div>';
+        if (!date) {
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="6" class="status">
+                Missing or invalid date. Please open this page like:
+                tdg_print.html?date=2026-03-19
+              </td>
+            </tr>
+          `;
           return;
         }
 
-        box.innerHTML = items
-          .map((r, idx) => {
-            const absoluteIndex = start + idx;
-            const timeText = fmtDateTime(
-              r.completedAt || r.arrivalTime || r.createdAt || r.date
-            );
-
-            return `
-              <div class="rowCard">
-                <div class="rowTop">
-                  <div>
-                    <div style="font-weight: 800; font-size: 16px;">
-                      ${escapeHtml(safe(r.accountName) || "-")}
-                    </div>
-                    <div class="muted2">
-                      ${escapeHtml(safe(r.accountAddress) || "-")}
-                    </div>
-                  </div>
-
-                  <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                    <button
-                      class="btn secondary"
-                      type="button"
-                      data-act="view"
-                      data-idx="${absoluteIndex}"
-                    >
-                      View Detail
-                    </button>
-                  </div>
-                </div>
-
-                <div class="kv" style="margin-top: 10px;">
-                  <span>Time: ${escapeHtml(timeText || "-")}</span>
-                  <span>Driver: ${escapeHtml(safe(r.driverName || r.driverNumber) || "-")}</span>
-                  <span>Vehicle: ${escapeHtml(safe(r.vehicleNo) || "-")}</span>
-                  <span>Acc No: ${escapeHtml(safe(r.accountNumber) || "-")}</span>
-                  <span>City: ${escapeHtml(safe(r.accountCity) || "-")}</span>
-                  <span>Route: ${escapeHtml(safe(r.accountRoute) || "-")}</span>
-                  <span>Week: ${escapeHtml(safe(r.weekCycle) || "-")}</span>
-                  <span>Delivered: ${escapeHtml(String(num(r.deliveredVolume)))}</span>
-                </div>
-
-                <div class="muted2">
-                  Notes: ${escapeHtml(safe(r.notes) || "-")}
-                </div>
-              </div>
-            `;
-          })
-          .join("");
-      }
-
-      document.addEventListener("click", (e) => {
-        const btn = e.target.closest("button[data-act='view']");
-        if (!btn) return;
-
-        const idx = Number(btn.getAttribute("data-idx"));
-        const source = _filtered.length ? _filtered : _all;
-        const record = source[idx];
-        if (!record) return;
-
-        openDetail(record);
-      });
-
-      document.addEventListener("DOMContentLoaded", async () => {
-        const sess = window.TDG_AUTH?.requireAuth?.();
-        if (!sess) return;
-
         try {
-          _all = await loadRecordsFromSupabase();
-          _all.sort((a, b) => getSortKey(b) - getSortKey(a));
-          console.log("History records loaded from Supabase:", _all.length);
-        } catch (err) {
-          console.error("History load failed:", err);
-          alert("历史记录读取失败，请检查 Supabase 权限或网络。");
-          _all = [];
-        }
+          const sess = window.TDG_AUTH?.requireAuth?.();
+          if (!sess) return;
 
-        resetFiltersToDefault(sess);
-        _filtered = [];
-        _page = 1;
+          const records = await loadByDate(date);
 
-        showResultPanel();
-        render();
-
-        $("btnDailyLog")?.addEventListener("click", () => {
-          const picked =
-            $("qDateFrom")?.value ||
-            $("qDateTo")?.value ||
-            new Date().toISOString().slice(0, 10);
-
-          const date = window.prompt("Enter date (YYYY-MM-DD)", picked);
-          if (!date) return;
-
-          const v = String(date).trim();
-          if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
-            alert("Invalid date format. Please use YYYY-MM-DD.");
+          if (!records.length) {
+            document.getElementById("hdrDate").textContent = date;
+            tbody.innerHTML = `
+              <tr>
+                <td colspan="6" class="status">No records found for ${date}.</td>
+              </tr>
+            `;
             return;
           }
 
-          window.open(`./tdg_print.html?date=${encodeURIComponent(v)}`, "_blank");
-        });
+          fillHeader(date, records);
+          setCheckboxesFromRows(records);
+          fillTable(records);
 
-        $("btnBack")?.addEventListener("click", () => {
-          window.location.href = "./index.html";
-        });
+          document.title = `${date}.pdf`;
+        } catch (err) {
+          console.error("TDG print load failed:", err);
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="6" class="status">
+                Failed to load records. Please check Supabase permissions or network.
+              </td>
+            </tr>
+          `;
+        }
+      }
 
-        $("btnSearch")?.addEventListener("click", applyFilters, { passive: true });
+      document.addEventListener("DOMContentLoaded", () => {
+        document
+          .getElementById("btnPrint")
+          .addEventListener("click", () => window.print());
 
-        $("btnReset")?.addEventListener(
-          "click",
-          () => {
-            resetFilters();
-          },
-          { passive: true }
-        );
+        document
+          .getElementById("btnClose")
+          .addEventListener("click", () => window.close());
 
-        $("btnPrev")?.addEventListener(
-          "click",
-          () => {
-            _page = Math.max(1, _page - 1);
-            render();
-          },
-          { passive: true }
-        );
-
-        $("btnNext")?.addEventListener(
-          "click",
-          () => {
-            const source = _filtered.length ? _filtered : _all;
-            const totalPages = Math.max(1, Math.ceil(source.length / PAGE_SIZE));
-            _page = Math.min(totalPages, _page + 1);
-            render();
-          },
-          { passive: true }
-        );
+        fill();
       });
     </script>
   </body>
