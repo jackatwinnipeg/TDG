@@ -358,6 +358,11 @@
         );
       }
 
+      function hideResultPanel() {
+        const panel = $("resultPanel");
+        if (panel) panel.style.display = "none";
+      }
+
       function showResultPanel() {
         const panel = $("resultPanel");
         if (panel) panel.style.display = "";
@@ -462,8 +467,11 @@
 
         _filtered = [];
         _page = 1;
-        showResultPanel();
-        render();
+
+        hideResultPanel();
+        updateCountTag(0);
+        if ($("pageText")) $("pageText").textContent = "—";
+        if ($("resultBox")) $("resultBox").innerHTML = "";
       }
 
       function openDetail(record) {
@@ -611,8 +619,10 @@
         _filtered = [];
         _page = 1;
 
-        showResultPanel();
-        render();
+        hideResultPanel();
+        updateCountTag(0);
+        if ($("pageText")) $("pageText").textContent = "—";
+        if ($("resultBox")) $("resultBox").innerHTML = "";
 
         $("btnDailyLog")?.addEventListener("click", openDailyLog);
 
