@@ -136,65 +136,57 @@
 }
 
   async function callFn(name, payload, { method = "POST" } = {}) {
-  const sb = getSb();
   const token = await getAccessToken();
+  const base = String(window.SUPABASE_URL || "").replace(/\/+$/, "");
+  if (!base) throw new Error("SUPABASE_URL missing");
 
-  console.log("[callFn] function =", name);
-  console.log("[callFn] method =", method);
-  console.log("[callFn] token prefix =", token.slice(0, 20));
-  console.log("[callFn] payload =", payload);
+  const url = `${base}/functions/v1/${name}`;
 
-  const { data, error } = await sb.functions.invoke(name, {
-    body: method === "GET" ? undefined : (payload ?? {}),
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  console.log("[callFn-fetch] url =", url);
+  console.log("[callFn-fetch] token prefix =", token.slice(0, 20));
+  console.log("[callFn-fetch] payload =", payload);
 
-  console.log("[callFn] invoke data =", data);
-  console.log("[callFn] invoke error =", error);
-
-  if (!error) return data;
-
-  console.log("Function invoke error:", error);
-  console.log("Function invoke error.context:", error.context);
-
-  let serverMsg = error.message || "Edge Function 调用失败";
-
-  if (error.context) {
-    try {
-      const cloned = error.context.clone();
-      const body = await cloned.json();
-      console.log("Function error body:", body);
-      serverMsg = body?.detail || body?.error || serverMsg;
-    } catch {
-      try {
-        const cloned = error.context.clone();
-        const text = await cloned.text();
-        console.log("Function error text:", text);
-        if (text) serverMsg = text;
-      } catch (textErr) {
-        console.log("读取错误响应失败:", textErr);
-      }
-    }
+  let res;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: method === "GET" ? undefined : JSON.stringify(payload ?? {}),
+    });
+  } catch (err) {
+    console.error("[callFn-fetch] network error =", err);
+    throw new Error("网络请求失败，无法连接 Edge Function");
   }
 
-  if (
-    serverMsg.includes("Invalid session") ||
-    serverMsg.includes("Missing bearer token") ||
-    serverMsg.includes("登录已失效")
-  ) {
-    throw new Error("登录已失效，请重新登录");
+  console.log("[callFn-fetch] status =", res.status);
+
+  let body = null;
+  try {
+    body = await res.json();
+  } catch {
+    body = null;
   }
 
-  if (
-    serverMsg.includes("Only admin can update users") ||
-    serverMsg.includes("Caller profile not found")
-  ) {
-    throw new Error("没有权限执行此操作");
+  console.log("[callFn-fetch] response body =", body);
+
+  if (!res.ok) {
+    const msg =
+      body?.detail ||
+      body?.error ||
+      body?.message ||
+      `Edge Function ${name} failed (${res.status})`;
+
+    if (res.status === 401) throw new Error(msg || "登录已失效，请重新登录");
+    if (res.status === 403) throw new Error(msg || "没有权限执行此操作");
+    if (res.status === 404) throw new Error(`Edge Function ${name} 不存在或未部署`);
+
+    throw new Error(msg);
   }
 
-  throw new Error(serverMsg);
+  return body;
 }
 
   function showApiError(err, fallback = "操作失败") {
