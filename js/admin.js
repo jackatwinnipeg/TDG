@@ -136,58 +136,66 @@
 }
 
   async function callFn(name, payload, { method = "POST" } = {}) {
-    const sb = getSb();
-    const token = await getAccessToken();
+  const sb = getSb();
+  const token = await getAccessToken();
 
-    const { data, error } = await sb.functions.invoke(name, {
-      body: method === "GET" ? undefined : (payload ?? {}),
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
+  console.log("[callFn] function =", name);
+  console.log("[callFn] method =", method);
+  console.log("[callFn] token prefix =", token.slice(0, 20));
+  console.log("[callFn] payload =", payload);
 
-    if (!error) return data;
+  const { data, error } = await sb.functions.invoke(name, {
+    body: method === "GET" ? undefined : (payload ?? {}),
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
 
-    console.log("Function invoke error:", error);
-    console.log("Function invoke error.context:", error.context);
+  console.log("[callFn] invoke data =", data);
+  console.log("[callFn] invoke error =", error);
 
-    let serverMsg = error.message || "Edge Function 调用失败";
+  if (!error) return data;
 
-    if (error.context) {
+  console.log("Function invoke error:", error);
+  console.log("Function invoke error.context:", error.context);
+
+  let serverMsg = error.message || "Edge Function 调用失败";
+
+  if (error.context) {
+    try {
+      const cloned = error.context.clone();
+      const body = await cloned.json();
+      console.log("Function error body:", body);
+      serverMsg = body?.detail || body?.error || serverMsg;
+    } catch {
       try {
         const cloned = error.context.clone();
-        const body = await cloned.json();
-        console.log("Function error body:", body);
-        serverMsg = body?.detail || body?.error || serverMsg;
-      } catch {
-        try {
-          const cloned = error.context.clone();
-          const text = await cloned.text();
-          console.log("Function error text:", text);
-          if (text) serverMsg = text;
-        } catch (textErr) {
-          console.log("读取错误响应失败:", textErr);
-        }
+        const text = await cloned.text();
+        console.log("Function error text:", text);
+        if (text) serverMsg = text;
+      } catch (textErr) {
+        console.log("读取错误响应失败:", textErr);
       }
     }
-
-    if (
-      serverMsg.includes("Invalid session") ||
-      serverMsg.includes("Missing bearer token") ||
-      serverMsg.includes("登录已失效")
-    ) {
-      throw new Error("登录已失效，请重新登录");
-    }
-
-    if (
-      serverMsg.includes("Only admin can update users") ||
-      serverMsg.includes("Caller profile not found")
-    ) {
-      throw new Error("没有权限执行此操作");
-    }
-
-    throw new Error(serverMsg);
   }
+
+  if (
+    serverMsg.includes("Invalid session") ||
+    serverMsg.includes("Missing bearer token") ||
+    serverMsg.includes("登录已失效")
+  ) {
+    throw new Error("登录已失效，请重新登录");
+  }
+
+  if (
+    serverMsg.includes("Only admin can update users") ||
+    serverMsg.includes("Caller profile not found")
+  ) {
+    throw new Error("没有权限执行此操作");
+  }
+
+  throw new Error(serverMsg);
+}
 
   function showApiError(err, fallback = "操作失败") {
     const msg = String(err?.message || fallback);
