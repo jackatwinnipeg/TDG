@@ -45,29 +45,38 @@
     return data?.session || null;
   }
 
-  async function getAccessToken() {
-    const sb = getSb();
+ async function getAccessToken() {
+  const sb = getSb();
 
-    const {
-      data: { session },
-      error: sessionError,
-    } = await sb.auth.getSession();
+  const {
+    data: { session },
+    error: sessionError,
+  } = await sb.auth.getSession();
 
-    if (sessionError || !session?.access_token) {
-      throw new Error("登录已失效，请重新登录");
-    }
+  console.log("[getAccessToken] sessionError =", sessionError);
+  console.log("[getAccessToken] has session =", !!session);
+  console.log("[getAccessToken] has access_token =", !!session?.access_token);
 
-    const {
-      data: { user },
-      error: userError,
-    } = await sb.auth.getUser();
-
-    if (userError || !user) {
-      throw new Error("登录已失效，请重新登录");
-    }
-
-    return session.access_token;
+  if (sessionError || !session?.access_token) {
+    throw new Error("登录已失效，请重新登录");
   }
+
+  const {
+    data: { user },
+    error: userError,
+  } = await sb.auth.getUser();
+
+  console.log("[getAccessToken] userError =", userError);
+  console.log("[getAccessToken] user id =", user?.id);
+
+  if (userError || !user) {
+    throw new Error("登录已失效，请重新登录");
+  }
+
+  console.log("[getAccessToken] token prefix =", session.access_token.slice(0, 20));
+
+  return session.access_token;
+}
 
   async function requireAdminPageAccess() {
     const sb = getSb();
