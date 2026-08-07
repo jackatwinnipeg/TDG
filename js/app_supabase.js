@@ -97,6 +97,7 @@ let arrivalTime = "";
 
 let shiftStart = "";
 let shiftFinish = "";
+let currentShiftSession = null;
 
 function nowHHMM() {
   const d = new Date();
@@ -1387,31 +1388,381 @@ function confirmArrive() {
   saveIndexState();
 }
 
-function checkIn() {
-  if (shiftStart) {
-    const ok = confirm(`已经有 Check-in：${shiftStart}。要覆盖为当前时间吗？`);
-    if (!ok) return;
-  }
-  shiftStart = nowHHMM();
-  shiftFinish = "";
-  renderShiftTime();
-  toast("已 Check-in", `开始时间：${shiftStart}`);
-  saveIndexState();
+
+function getShiftWorkDate() {
+  return $("date")?.value || tdgLocalDate();
 }
 
-function checkOut() {
-  if (!shiftStart) {
-    alert("请先 Check-in（记录开始时间）");
+function getCheckInCandidate() {
+  const startKmInput = $("startKm");
+  const rawStartKm = String(startKmInput?.value ?? "").trim();
+  const startKm = Number(rawStartKm);
+  const sess = getAuthSessionSafe();
+
+  if (!rawStartKm || !Number.isFinite(startKm) || startKm < 0) {
+    throw new Error("请先填写有效的 Start KM。");
+  }
+
+  return {
+    ownerId: sess?.userId || "",
+    workDate: getShiftWorkDate(),
+    driverNumber: sess?.driverNumber || sess?.username || "",
+    driverName: sess?.displayName || sess?.username || "",
+    vehicleNo: $("vehicleNo")?.value?.trim() || sess?.vehicleNo || "",
+    startKm,
+    checkInAt: tdgLocalDateTimeISO(),
+    checkInTime: nowHHMM(),
+  };
+}
+
+function applyShiftSession(session, { showToast = false } = {}) {
+  if (!session) return false;
+
+  currentShiftSession = session;
+  shiftStart = session.checkInTime || "";
+  shiftFinish = session.checkOutTime || "";
+
+  if ($("date") && session.workDate) {
+    $("date").value = session.workDate;
+  }
+
+  if ($("startKm") && Number.isFinite(Number(session.startKm))) {
+    $("startKm").value = String(session.startKm);
+  }
+
+  if ($("vehicleNo") && session.vehicleNo) {
+    $("vehicleNo").value = session.vehicleNo;
+  }
+
+  renderShiftTime();
+  saveIndexState();
+
+  if (showToast) {
+    toast(
+      "Check-in 已恢复",
+      `${session.checkInTime || "—"} · Start KM ${session.startKm}`,
+    );
+  }
+
+  return true;
+}
+
+function mapShiftSessionRow(row) {
+  if (!row) return null;
+
+  return {
+    id: row.id || "",
+    ownerId: row.owner_id || "",
+    workDate: row.work_date || "",
+    driverNumber: row.driver_number || "",
+    driverName: row.driver_name || "",
+    vehicleNo: row.vehicle_no || "",
+    startKm: Number(row.start_km ?? 0),
+    checkInAt: row.check_in_at || "",
+    checkInTime: row.check_in_time || "",
+    checkOutAt: row.check_out_at || "",
+    checkOutTime: row.check_out_time || "",
+    updatedAt: row.updated_at || "",
+  };
+}
+
+async function fetchShiftSessionFromSupabase(workDate = getShiftWorkDate()) {
+  const sb = window.supabaseClient;
+  const sess = getAuthSessionSafe();
+
+  if (!sb?.from || !sess?.userId) {
+    return null;
+  }
+
+  const { data, error } = await sb
+    .from("tdg_shift_sessions")
+    .select(
+      "id, owner_id, work_date, driver_number, driver_name, vehicle_no, start_km, check_in_at, check_in_time, check_out_at, check_out_time, updated_at",
+    )
+    .eq("owner_id", sess.userId)
+    .eq("work_date", workDate)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`读取 Check-in 数据失败：${error.message}`);
+  }
+
+  return mapShiftSessionRow(data);
+}
+
+async function restoreCheckInFromSupabase({
+  workDate = getShiftWorkDate(),
+  silent = false,
+} = {}) {
+  try {
+    const session = await fetchShiftSessionFromSupabase(workDate);
+
+    if (!session) {
+      if (currentShiftSession?.workDate !== workDate) {
+        currentShiftSession = null;
+        shiftStart = "";
+        shiftFinish = "";
+        renderShiftTime();
+      }
+      return null;
+    }
+
+    applyShiftSession(session, {
+      showToast: !silent,
+    });
+
+    return session;
+  } catch (error) {
+    console.warn("restoreCheckInFromSupabase failed:", error);
+
+    if (!silent) {
+      toast(
+        "Check-in 恢复失败",
+        error?.message || "无法读取云端班次数据。",
+      );
+    }
+
+    return null;
+  }
+}
+
+async function persistCheckInToSupabase(candidate) {
+  const sb = window.supabaseClient;
+  const sess = getAuthSessionSafe();
+
+  if (!sb?.from || !sess?.userId) {
+    throw new Error("登录状态已失效，请重新登录。");
+  }
+
+  const row = {
+    owner_id: sess.userId,
+    work_date: candidate.workDate,
+    driver_number: candidate.driverNumber,
+    driver_name: candidate.driverName,
+    vehicle_no: candidate.vehicleNo,
+    start_km: candidate.startKm,
+    check_in_at: candidate.checkInAt,
+    check_in_time: candidate.checkInTime,
+    check_out_at: null,
+    check_out_time: null,
+    updated_at: tdgLocalDateTimeISO(),
+  };
+
+  const { data, error } = await sb
+    .from("tdg_shift_sessions")
+    .upsert(row, {
+      onConflict: "owner_id,work_date",
+    })
+    .select(
+      "id, owner_id, work_date, driver_number, driver_name, vehicle_no, start_km, check_in_at, check_in_time, check_out_at, check_out_time, updated_at",
+    )
+    .single();
+
+  if (error) {
+    throw new Error(`保存 Check-in 失败：${error.message}`);
+  }
+
+  const saved = mapShiftSessionRow(data);
+  applyShiftSession(saved);
+
+  return saved;
+}
+
+function setCheckInReplaceError(message = "") {
+  const element = $("checkInReplaceError");
+  if (element) element.textContent = message;
+}
+
+function closeCheckInReplaceModal() {
+  const modal = $("checkInReplaceModal");
+  if (!modal) return;
+
+  modal.hidden = true;
+  modal.setAttribute("aria-hidden", "true");
+  modal.dataset.candidate = "";
+  document.body.style.overflow = "";
+  setCheckInReplaceError("");
+}
+
+function openCheckInReplaceModal(existing, candidate) {
+  const modal = $("checkInReplaceModal");
+  if (!modal) return;
+
+  const existingText =
+    `${existing.checkInTime || "—"} · Start KM ${existing.startKm}` +
+    `${existing.vehicleNo ? ` · Vehicle ${existing.vehicleNo}` : ""}`;
+
+  const candidateText =
+    `${candidate.checkInTime} · Start KM ${candidate.startKm}` +
+    `${candidate.vehicleNo ? ` · Vehicle ${candidate.vehicleNo}` : ""}`;
+
+  if ($("checkInExistingValue")) {
+    $("checkInExistingValue").textContent = existingText;
+  }
+
+  if ($("checkInNewValue")) {
+    $("checkInNewValue").textContent = candidateText;
+  }
+
+  modal.dataset.candidate = JSON.stringify(candidate);
+  modal.hidden = false;
+  modal.setAttribute("aria-hidden", "false");
+  document.body.style.overflow = "hidden";
+  setCheckInReplaceError("");
+
+  requestAnimationFrame(() => $("btnCheckInReplaceConfirm")?.focus());
+}
+
+async function confirmCheckInReplacement() {
+  const modal = $("checkInReplaceModal");
+  const button = $("btnCheckInReplaceConfirm");
+
+  if (!modal?.dataset.candidate) return;
+
+  let candidate;
+
+  try {
+    candidate = JSON.parse(modal.dataset.candidate);
+  } catch {
+    setCheckInReplaceError("无法读取新的 Check-in 数据。");
     return;
   }
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Replacing...";
+  }
+
+  try {
+    const saved = await persistCheckInToSupabase(candidate);
+    closeCheckInReplaceModal();
+
+    toast(
+      "Check-in 已替换",
+      `${saved.checkInTime} · Start KM ${saved.startKm}`,
+    );
+  } catch (error) {
+    console.error("Replace check-in failed:", error);
+    setCheckInReplaceError(
+      error?.message || "替换 Check-in 失败，请稍后重试。",
+    );
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Replace Check-in";
+    }
+  }
+}
+
+async function checkIn() {
+  if (window.__savingCheckIn) return;
+
+  let candidate;
+
+  try {
+    candidate = getCheckInCandidate();
+  } catch (error) {
+    toast(
+      "无法 Check-in",
+      error?.message || "请检查 Start KM。",
+    );
+    $("startKm")?.focus();
+    return;
+  }
+
+  window.__savingCheckIn = true;
+  const button = $("btnCheckIn");
+
+  if (button) button.disabled = true;
+
+  try {
+    const existing =
+      currentShiftSession?.workDate === candidate.workDate
+        ? currentShiftSession
+        : await fetchShiftSessionFromSupabase(candidate.workDate);
+
+    if (existing?.checkInAt || existing?.checkInTime) {
+      currentShiftSession = existing;
+      openCheckInReplaceModal(existing, candidate);
+      return;
+    }
+
+    const saved = await persistCheckInToSupabase(candidate);
+
+    toast(
+      "已 Check-in",
+      `${saved.checkInTime} · Start KM ${saved.startKm}`,
+    );
+  } catch (error) {
+    console.error("Check-in failed:", error);
+
+    toast(
+      "Check-in 失败",
+      error?.message || "无法保存云端 Check-in 数据。",
+    );
+  } finally {
+    window.__savingCheckIn = false;
+    if (button) button.disabled = false;
+  }
+}
+
+async function checkOut() {
+  if (!shiftStart || !currentShiftSession) {
+    alert("请先 Check-in（记录开始时间及 Start KM）");
+    return;
+  }
+
+  const nextFinish = nowHHMM();
+
   if (shiftFinish) {
-    const ok = confirm(`已经有 Check-out：${shiftFinish}。要覆盖为当前时间吗？`);
+    const ok = confirm(
+      `已经有 Check-out：${shiftFinish}。要覆盖为 ${nextFinish} 吗？`,
+    );
+
     if (!ok) return;
   }
-  shiftFinish = nowHHMM();
-  renderShiftTime();
-  toast("已 Check-out", `结束时间：${shiftFinish}`);
-  saveIndexState();
+
+  const sb = window.supabaseClient;
+  const sess = getAuthSessionSafe();
+
+  if (!sb?.from || !sess?.userId) {
+    toast("Check-out 失败", "登录状态已失效，请重新登录。");
+    return;
+  }
+
+  try {
+    const { data, error } = await sb
+      .from("tdg_shift_sessions")
+      .update({
+        check_out_at: tdgLocalDateTimeISO(),
+        check_out_time: nextFinish,
+        updated_at: tdgLocalDateTimeISO(),
+      })
+      .eq("owner_id", sess.userId)
+      .eq("work_date", currentShiftSession.workDate)
+      .select(
+        "id, owner_id, work_date, driver_number, driver_name, vehicle_no, start_km, check_in_at, check_in_time, check_out_at, check_out_time, updated_at",
+      )
+      .single();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    applyShiftSession(mapShiftSessionRow(data));
+
+    toast(
+      "已 Check-out",
+      `结束时间：${shiftFinish}`,
+    );
+  } catch (error) {
+    console.error("Check-out failed:", error);
+
+    toast(
+      "Check-out 失败",
+      error?.message || "无法保存 Check-out。",
+    );
+  }
 }
 
 function saveDraft() {
@@ -1999,6 +2350,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     draftRestored = loadDraftIfAny();
   }
 
+  /*
+   * Cloud Check-in is authoritative.
+   * This restores Check-in time, Start KM and Vehicle No
+   * after accidental logout or login on another device.
+   */
+  try {
+    await restoreCheckInFromSupabase({
+      workDate: $("date")?.value || tdgLocalDate(),
+      silent: true,
+    });
+  } catch (error) {
+    console.warn("Initial Check-in restore failed:", error);
+  }
+
   try {
     const importResult =
       await importPreviousDayTdgBalanceOncePerDay();
@@ -2060,6 +2425,30 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("btnArrive")?.addEventListener("click", confirmArrive);
   $("btnCheckIn")?.addEventListener("click", checkIn);
   $("btnCheckOut")?.addEventListener("click", checkOut);
+
+  $("btnCheckInReplaceClose")?.addEventListener(
+    "click",
+    closeCheckInReplaceModal,
+  );
+
+  $("btnCheckInReplaceCancel")?.addEventListener(
+    "click",
+    closeCheckInReplaceModal,
+  );
+
+  $("btnCheckInReplaceConfirm")?.addEventListener(
+    "click",
+    confirmCheckInReplacement,
+  );
+
+  $("checkInReplaceModal")?.addEventListener(
+    "click",
+    (event) => {
+      if (event.target === $("checkInReplaceModal")) {
+        closeCheckInReplaceModal();
+      }
+    },
+  );
   $("btnSaveDraft")?.addEventListener("click", saveDraft);
   $("btnDone")?.addEventListener("click", done);
 
@@ -2095,6 +2484,14 @@ document.addEventListener("DOMContentLoaded", async () => {
         !$("reloadModal")?.hidden
       ) {
         closeReloadModal();
+        return;
+      }
+
+      if (
+        event.key === "Escape" &&
+        !$("checkInReplaceModal")?.hidden
+      ) {
+        closeCheckInReplaceModal();
       }
     },
   );
@@ -2240,6 +2637,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   ) {
     dateInput.value = tdgLocalDate();
   }
+
+  dateInput?.addEventListener(
+    "change",
+    async () => {
+      await restoreCheckInFromSupabase({
+        workDate: dateInput.value || tdgLocalDate(),
+        silent: true,
+      });
+    },
+  );
 
   ensureDemoProfile();
   renderShiftTime();
