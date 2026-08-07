@@ -488,6 +488,84 @@
       </section>
     </div>
 
+
+    <div
+      class="reload-modal"
+      id="checkInReplaceModal"
+      hidden
+      aria-hidden="true"
+    >
+      <section
+        class="reload-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="checkInReplaceTitle"
+      >
+        <div class="reload-dialog__header">
+          <div>
+            <div class="tag">Check-in Confirmation</div>
+            <h2 id="checkInReplaceTitle" style="margin:8px 0 0">
+              Replace existing Check-in?
+            </h2>
+          </div>
+          <button
+            class="btn secondary"
+            id="btnCheckInReplaceClose"
+            type="button"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div class="reload-dialog__body">
+          <p class="help" style="margin-top:0">
+            A Check-in already exists for this date. Confirm whether the new
+            time and Start KM should replace the saved values.
+          </p>
+
+          <div class="reload-location">
+            <label>Saved Check-in</label>
+            <strong
+              id="checkInExistingValue"
+              style="display:block;margin-top:6px"
+            ></strong>
+          </div>
+
+          <div class="reload-location" style="margin-top:12px">
+            <label>New Check-in</label>
+            <strong
+              id="checkInNewValue"
+              style="display:block;margin-top:6px"
+            ></strong>
+          </div>
+
+          <div
+            class="reload-error"
+            id="checkInReplaceError"
+            role="alert"
+          ></div>
+        </div>
+
+        <div class="reload-dialog__footer">
+          <button
+            class="btn secondary"
+            id="btnCheckInReplaceCancel"
+            type="button"
+          >
+            Keep Saved
+          </button>
+          <button
+            class="btn warn"
+            id="btnCheckInReplaceConfirm"
+            type="button"
+          >
+            Replace Check-in
+          </button>
+        </div>
+      </section>
+    </div>
+
     <div class="toast" id="toast" aria-live="polite">
       <strong id="toastTitle"></strong>
       <p id="toastMsg"></p>
