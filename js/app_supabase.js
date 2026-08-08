@@ -2148,8 +2148,19 @@ async function importPreviousDayTdgBalanceOncePerDay({ force = false } = {}) {
       };
     }
 
+    /*
+     * This is the first successful previous-day balance check for this
+     * driver today. The server-calculated previous-day remainder is the
+     * authoritative starting TDG Volume for the new work day.
+     *
+     * Force the value here so stale sessionStorage/local draft values from
+     * yesterday cannot block today's automatic initialization.
+     *
+     * The once-per-day importKey guard above prevents this from overwriting
+     * today's TDG Volume again on later refreshes/logins.
+     */
     const imported = applyPreviousDayTdgBalance(balance, {
-      force,
+      force: true,
       showMessage: true,
     });
 
@@ -2171,7 +2182,7 @@ async function importPreviousDayTdgBalanceOncePerDay({ force = false } = {}) {
       Number.isFinite(Number(cached?.remainingKg))
     ) {
       const imported = applyPreviousDayTdgBalance(cached, {
-        force,
+        force: true,
         showMessage: false,
       });
 
