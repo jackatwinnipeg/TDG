@@ -591,14 +591,24 @@
           );
 
           const recordMap = new Map();
+
+          /*
+           * IMPORTANT:
+           * Batch search filters are used only to decide WHICH ACCOUNTS
+           * appear in the selection list.
+           *
+           * Once an account is selected, its Fill Log must use that
+           * customer's complete delivery history (excluding Reload events),
+           * then buildSheet() keeps the most recent MAX_ROWS records.
+           */
           for (const row of allRecords) {
             if (isReloadRecord(row)) continue;
-            if (!recordMatchesSelectionFilters(row, filters)) continue;
 
             const accountNumber = safe(row.account_number);
             if (!recordMap.has(accountNumber)) {
               recordMap.set(accountNumber, []);
             }
+
             recordMap.get(accountNumber).push(row);
           }
 
@@ -626,25 +636,9 @@
           }
 
           document.getElementById("sheets").innerHTML = sheets.join("");
-          const scopeParts = [];
-          if (safe(filters?.weekCycle)) {
-            scopeParts.push(`Week ${safe(filters.weekCycle)}`);
-          }
-          if (safe(filters?.driverNumber)) {
-            scopeParts.push(`Driver ${safe(filters.driverNumber)}`);
-          }
-          if (safe(filters?.accountNumber)) {
-            scopeParts.push(`Account ${safe(filters.accountNumber)}`);
-          }
-          if (safe(filters?.dateFrom) || safe(filters?.dateTo)) {
-            scopeParts.push(
-              `${safe(filters?.dateFrom) || "Any"} → ${safe(filters?.dateTo) || "Any"}`
-            );
-          }
-
           document.getElementById("status").textContent =
-            `${sheets.length} Fill Log${sheets.length === 1 ? "" : "s"} ready` +
-            (scopeParts.length ? ` · ${scopeParts.join(" · ")}` : "");
+            `${sheets.length} Fill Log${sheets.length === 1 ? "" : "s"} ready · ` +
+            `Each log shows the customer's most recent ${MAX_ROWS} delivery records`;
           document.getElementById("btnPrint").disabled = false;
           document.title = `Batch Fill Logs (${sheets.length})`;
         } catch (error) {
