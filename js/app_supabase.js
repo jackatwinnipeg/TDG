@@ -1154,8 +1154,86 @@ async function uploadFinalDailyLogAndOffDuty(reason = "off_duty") {
   return ins;
 }
 
+function validateOffDutyRequiredFields() {
+  const startKmInput = $("startKm");
+  const endKmInput = $("endKm");
+
+  const rawStartKm = String(startKmInput?.value ?? "").trim();
+  const rawEndKm = String(endKmInput?.value ?? "").trim();
+  const checkOutTime = String(shiftFinish || "").trim();
+
+  if (!rawStartKm) {
+    toast("Cannot go Off Duty", "Start KM is required.");
+    startKmInput?.focus();
+    return {
+      ok: false,
+      reason: "start_km_required",
+    };
+  }
+
+  const startKm = Number(rawStartKm);
+  if (!Number.isFinite(startKm) || startKm < 0) {
+    toast("Cannot go Off Duty", "Please enter a valid Start KM.");
+    startKmInput?.focus();
+    return {
+      ok: false,
+      reason: "start_km_invalid",
+    };
+  }
+
+  if (!rawEndKm) {
+    toast("Cannot go Off Duty", "End KM is required.");
+    endKmInput?.focus();
+    return {
+      ok: false,
+      reason: "end_km_required",
+    };
+  }
+
+  const endKm = Number(rawEndKm);
+  if (!Number.isFinite(endKm) || endKm < 0) {
+    toast("Cannot go Off Duty", "Please enter a valid End KM.");
+    endKmInput?.focus();
+    return {
+      ok: false,
+      reason: "end_km_invalid",
+    };
+  }
+
+  if (!checkOutTime) {
+    toast(
+      "Cannot go Off Duty",
+      "Check-Out Time is required. Please click Check-out first.",
+    );
+
+    return {
+      ok: false,
+      reason: "check_out_time_required",
+    };
+  }
+
+  return {
+    ok: true,
+    startKm,
+    endKm,
+    checkOutTime,
+  };
+}
+
 async function logoutFlow() {
-  const ok = confirm("Off Duty will sync all today's local records to Supabase, then upload a final daily snapshot. Continue?");
+  const validation = validateOffDutyRequiredFields();
+  if (!validation.ok) {
+    return;
+  }
+
+  const ok = confirm(
+    `Off Duty will sync all today's local records to Supabase, then upload a final daily snapshot.\n\n` +
+      `Start KM: ${validation.startKm}\n` +
+      `End KM: ${validation.endKm}\n` +
+      `Check-Out: ${validation.checkOutTime}\n\n` +
+      `Continue?`,
+  );
+
   if (!ok) return;
 
   const btn = $("btnLogout");
