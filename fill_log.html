@@ -243,7 +243,7 @@
       <button class="btn" type="button" onclick="window.print()">Print</button>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0"></script>
     <script src="./js/supabaseConfig.js"></script>
     <script src="./js/supabaseClient.js"></script>
     <script src="./js/auth_supabase.js"></script>
@@ -507,6 +507,9 @@
       }
 
       async function init() {
+        const sess = await window.TDG_AUTH?.requireAuthAsync?.();
+        if (!sess) return;
+
         const r = readCurrent();
         if (!r) return;
 

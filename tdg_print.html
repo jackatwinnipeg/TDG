@@ -384,7 +384,7 @@
       </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0"></script>
     <script src="./js/supabaseConfig.js"></script>
     <script src="./js/supabaseClient.js"></script>
     <script src="./js/auth_supabase.js"></script>
@@ -663,6 +663,9 @@
       }
 
       async function fill() {
+        const sess = await window.TDG_AUTH?.requireAuthAsync?.();
+        if (!sess) return;
+
         const date = getQueryDate();
         const tbody = document.getElementById("tbody");
 
@@ -679,9 +682,6 @@
         }
 
         try {
-          const sess = window.TDG_AUTH?.requireAuth?.();
-          if (!sess) return;
-
           const records = await loadByDate(date);
 
           if (!records.length) {

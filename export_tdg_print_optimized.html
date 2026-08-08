@@ -390,6 +390,10 @@
         </div>
       </div>
     </div>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0"></script>
+    <script src="./js/supabaseConfig.js"></script>
+    <script src="./js/supabaseClient.js"></script>
+    <script src="./js/auth_supabase.js"></script>
     <script>
       const KG_TO_LBS = 2.20462;
       const LBS_TO_KG = 0.453592;
@@ -680,7 +684,10 @@ const rows = records
         tbody.innerHTML = out.join("");
       }
 
-      document.addEventListener("DOMContentLoaded", () => {
+      document.addEventListener("DOMContentLoaded", async () => {
+        const session = await window.TDG_AUTH?.requireAuthAsync?.();
+        if (!session) return;
+
         document
           .getElementById("btnPrint")
           .addEventListener("click", () => window.print());
