@@ -435,8 +435,13 @@ function getFormData() {
     driverName: sess?.displayName || sess?.username || $("driverName")?.value.trim() || "",
     date: $("date")?.value || "",
     vehicleNo: $("vehicleNo")?.value.trim() || "",
-    startKm: Number($("startKm")?.value || 0),
-    endKm: Number($("endKm")?.value || 0),
+    startKm: $("startKm")?.value === ""
+              ? ""
+             : Number($("startKm").value),
+
+    endKm: $("endKm")?.value === ""
+              ? ""
+             : Number($("endKm").value),
     totalKm: Number($("totalKm")?.value || 0),
     tdgVolume: Number($("tdgVolume")?.value || 0),
     weekCycle: Number($("weekCycle")?.value || 1),
