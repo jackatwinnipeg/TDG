@@ -1,0 +1,930 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>Batch TDG Daily Logs</title>
+    <style>
+
+      @page {
+        size: A4 landscape;
+        margin: 8mm;
+      }
+      @media print {
+        .no-print {
+          display: none !important;
+        }
+        body {
+          background: #fff;
+        }
+      }
+
+      body {
+        margin: 0;
+        background: #eee;
+        font-family: Arial, Helvetica, sans-serif;
+        color: #000;
+      }
+      .sheet {
+        width: 277mm;
+        background: #fff;
+        margin: 12px auto;
+        padding: 0;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
+      }
+
+      .box {
+        border: 1px solid #000;
+      }
+      .row {
+        display: flex;
+      }
+      .col {
+        display: flex;
+        flex-direction: column;
+      }
+      .p6 {
+        padding: 6px;
+      }
+      .p8 {
+        padding: 8px;
+      }
+      .p10 {
+        padding: 10px;
+      }
+      .tight {
+        line-height: 1.1;
+      }
+      .small {
+        font-size: 10px;
+      }
+      .xs {
+        font-size: 9px;
+      }
+      .title {
+        font-weight: 700;
+        font-size: 14px;
+        text-align: center;
+        padding: 6px 0;
+      }
+      .muted {
+        opacity: 0.9;
+      }
+      .label {
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: none;
+      }
+      .value {
+        font-size: 11px;
+        min-height: 14px;
+      }
+      .gridline {
+        border-top: 1px solid #000;
+      }
+      .gridline-v {
+        border-left: 1px solid #000;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+        font-size: 10px;
+      }
+      th,
+      td {
+        border: 1px solid #000;
+        padding: 2px 3px;
+        vertical-align: top;
+        word-wrap: break-word;
+      }
+      th {
+        font-weight: 700;
+        text-align: center;
+      }
+      .center {
+        text-align: center;
+      }
+      .right {
+        text-align: right;
+      }
+
+      table thead th:nth-child(4),
+      table tbody td:nth-child(4),
+      table thead th:nth-child(5),
+      table tbody td:nth-child(5),
+      table thead th:nth-child(6),
+      table tbody td:nth-child(6) {
+        text-align: center;
+      }
+
+      .toolbar {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 12px;
+        position: sticky;
+        top: 0;
+        background: #fff;
+        border-bottom: 1px solid #ddd;
+      }
+      .btn {
+        border: 1px solid #111;
+        background: #111;
+        color: #fff;
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-weight: 700;
+        min-height: 44px;
+        cursor: pointer;
+      }
+      .btn.secondary {
+        background: #fff;
+        color: #111;
+      }
+      .warn {
+        color: #b00020;
+        font-weight: 700;
+      }
+
+      .bg-watermark {
+        position: relative;
+      }
+      .bg-watermark::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        opacity: 0.12;
+        pointer-events: none;
+      }
+      .bg-watermark > * {
+        position: relative;
+        z-index: 1;
+      }
+
+      .kv {
+        display: grid;
+        grid-template-columns: 92px 1fr;
+        align-items: center;
+        column-gap: 6px;
+      }
+      .kv .label {
+        margin: 0;
+        white-space: nowrap;
+      }
+      .kv .value {
+        margin: 0;
+        text-align: left;
+        min-height: 14px;
+      }
+      .inline-info {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 4px;
+        white-space: nowrap;
+      }
+
+      .inline-info .label {
+        margin: 0;
+        white-space: nowrap;
+      }
+
+      .inline-info .value {
+        margin: 0;
+        min-height: 14px;
+        white-space: nowrap;
+      }
+
+      .inline-info .label::after {
+        content: ":";
+        margin-left: 2px;
+      }
+      .inline-info .value {
+        font-size: 16px;
+        font-weight: 700;
+        font-family:
+          "SimHei", "Microsoft YaHei", Arial, Helvetica, sans-serif;
+        text-align: center;
+        flex: 1;
+      }
+
+      .status {
+        padding: 18px;
+        font-size: 14px;
+      }
+    
+      #sheets {
+        display: grid;
+        gap: 18px;
+      }
+      .batch-status {
+        font-size: 12px;
+        color: #555;
+        margin-top: 3px;
+      }
+      .error-box {
+        width: min(277mm, calc(100% - 24px));
+        margin: 20px auto;
+        padding: 16px;
+        border: 1px solid #b00020;
+        background: #fff;
+        color: #8b0018;
+      }
+      @media print {
+        #sheets {
+          display: block;
+        }
+        .sheet {
+          margin: 0 auto !important;
+          box-shadow: none !important;
+          break-after: page;
+          page-break-after: always;
+        }
+        .sheet:last-child {
+          break-after: auto;
+          page-break-after: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="toolbar no-print">
+      <div>
+        <b>Batch TDG Daily Logs</b>
+        <div class="batch-status" id="batchStatus">Loading selected Daily Logs…</div>
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap">
+        <button class="btn secondary" id="btnClose" type="button">Close</button>
+        <button class="btn" id="btnPrint" type="button" disabled>
+          Print / Save PDF
+        </button>
+      </div>
+    </div>
+
+    <main id="sheets"></main>
+
+    <template id="tdgSheetTemplate">
+<div class="sheet box bg-watermark">
+<div class="title box">
+        Transportation of Dangerous Goods Shipping Document
+      </div>
+<div class="row box">
+<div class="col p8" style="flex: 1">
+<div class="gridline" style="margin-top: 6px"></div>
+<div class="row" style="gap: 10px; margin-top: 6px">
+<div style="flex: 1">
+<div class="label" style="font-size: 10px;">Consignor:</div>
+<div class="value" data-field="consignorName" style="font-size: 18px; font-weight: 700;">
+    Linde Canada Inc.
+  </div>
+</div>
+<div style="width: 200px">
+<div class="label">CHECK LOADED PRODUCT</div>
+<div class="small">
+<label><input data-field="chkO2" type="checkbox"/> O2</label> 
+                <label><input data-field="chkN2" type="checkbox"/> N2</label> 
+                <label><input data-field="chkAr" type="checkbox"/> Ar</label> 
+                <label><input data-field="chkCO2" type="checkbox"/> CO2</label>
+</div>
+</div>
+</div>
+<div class="small tight">
+<b>ERAP</b> 2-0821 AND 24 HOUR NUMBER: <b>800-363-0042</b>
+</div>
+<div class="gridline" style="margin-top: 6px"></div>
+<div class="row" style="gap: 10px; margin-top: 6px">
+<div style="flex: 1">
+<div class="label">PRODUCT DESCRIPTION</div>
+<div class="xs tight">
+                UN1073, OXYGEN, REFRIGERATED LIQUID, 2.2(5.1)<br/>
+                UN1977, NITROGEN, REFRIGERATED LIQUID, 2.2<br/>
+                UN1951, ARGON, REFRIGERATED LIQUID, 2.2<br/>
+                UN2187, CARBON DIOXIDE, REFRIGERATED LIQUID, 2.2
+              </div>
+</div>
+</div>
+</div>
+<div class="col box" style="width: 260px">
+<div class="p6 kv">
+<span class="label">Date:</span>
+<span class="value" data-field="hdrDate"></span>
+</div>
+<div class="gridline"></div>
+<div class="p6 kv">
+<span class="label">Vehicle No:</span>
+<span class="value" data-field="hdrVehicle"></span>
+</div>
+<div class="gridline"></div>
+<div class="p6 kv">
+<span class="label">Start km:</span>
+<span class="value" data-field="hdrStartKm"></span>
+</div>
+<div class="gridline"></div>
+<div class="p6 kv">
+<span class="label">End km:</span>
+<span class="value" data-field="hdrEndKm"></span>
+</div>
+<div class="gridline"></div>
+<div class="p6 kv">
+<span class="label">Total km:</span>
+<span class="value" data-field="hdrTotalKm"></span>
+</div>
+</div>
+</div>
+<div class="row box">
+<div class="col p6 inline-info" style="width: 220px">
+<div class="label">SHIFT TIME START</div>
+<div class="value" data-field="hdrShiftStart"></div>
+</div>
+<div class="col p6 gridline-v inline-info" style="width: 220px">
+<div class="label">SHIFT TIME FINISH</div>
+<div class="value" data-field="hdrShiftFinish"></div>
+</div>
+<div class="col p6 gridline-v inline-info" style="width: 220px">
+<div class="label">TDG START VOLUME(KGs)</div>
+<div class="value" data-field="hdrTdgStart"></div>
+</div>
+<div class="col p6 gridline-v inline-info" style="flex: 1">
+<div class="label">TDG REMAINING VOLUME(KGs)</div>
+<div class="value" data-field="hdrTdgRemaining"></div>
+</div>
+</div>
+<div class="box">
+<table>
+<thead>
+<tr>
+<th style="width: 50px">ARRIVE</th>
+<th style="width: 401px">CUSTOMER/LOCATION OR ACTIVITY</th>
+<th style="width: 90px">ACCOUNT #</th>
+<th style="width: 90px">DELIVERED(Lbs)</th>
+<th style="width: 80px">BALANCE(Lbs)</th>
+<th>NOTES</th>
+</tr>
+</thead>
+<tbody data-field="tbody">
+<tr>
+<td class="status" colspan="6" data-field="loadingCell">Loading...</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="box p8">
+<div class="small tight">
+          I hereby declare that the contents of this consignment are fully and
+          accurately described above by the proper shipping name, are properly
+          classified and packaged, have dangerous goods safety marks properly
+          affixed or displayed on them, and are in all respects in proper
+          condition for transport according to the Transportation of Dangerous
+          Goods Regulations.
+        </div>
+<div class="row" style="margin-top: 10px; gap: 10px">
+<div class="col" style="flex: 1">
+<div class="label">Consignor: (print employee name)</div>
+<div class="box p6" data-field="sigPrint" style="min-height: 24px"></div>
+</div>
+<div class="col" style="flex: 1">
+<div class="label">Signature:</div>
+<div class="box p6" data-field="sigSign" style="min-height: 24px"></div>
+</div>
+<div class="col" style="width: 220px">
+<div class="label">Date:</div>
+<div class="box p6" data-field="sigDate" style="min-height: 24px"></div>
+</div>
+</div>
+<div class="small muted" style="margin-top: 8px">
+          In the U.S. Call CHEMTREC at 1-800-424-9300 for emergency response
+          instructions.
+        </div>
+</div>
+</div>
+    </template>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="./js/supabaseConfig.js"></script>
+    <script src="./js/supabaseClient.js"></script>
+    <script src="./js/auth_supabase.js"></script>
+    <script>
+      const LS_BATCH_TDG_SELECTION = "tdg_batch_tdg_selection_v1";
+      const LBS_TO_KG = 0.45359237;
+      const KG_TO_LBS = 1 / LBS_TO_KG;
+
+      const safe = (value) => String(value ?? "").trim();
+
+      function num(value) {
+        const text = String(value ?? "")
+          .trim()
+          .replace(/,/g, "");
+
+        if (!text) return 0;
+        const match = text.match(/-?\d+(?:\.\d+)?/);
+        const number = match ? Number(match[0]) : Number(text);
+        return Number.isFinite(number) ? number : 0;
+      }
+
+      function lbsToKg(value) {
+        return num(value) * LBS_TO_KG;
+      }
+
+      function kgToLbs(value) {
+        return num(value) * KG_TO_LBS;
+      }
+
+      function integerPart(value) {
+        const number = Number(value);
+        return Number.isFinite(number) ? Math.trunc(number) : 0;
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function readSelection() {
+        try {
+          const parsed = JSON.parse(
+            localStorage.getItem(LS_BATCH_TDG_SELECTION) || "null"
+          );
+
+          return parsed && Array.isArray(parsed.groups)
+            ? parsed.groups
+            : [];
+        } catch {
+          return [];
+        }
+      }
+
+      function field(sheet, name) {
+        return sheet.querySelector(`[data-field="${name}"]`);
+      }
+
+      function setText(sheet, name, value) {
+        const element = field(sheet, name);
+        if (element) element.textContent = safe(value);
+      }
+
+      function setChecked(sheet, name, checked) {
+        const element = field(sheet, name);
+        if (element) element.checked = Boolean(checked);
+      }
+
+      function formatTime(value) {
+        if (value == null) return "";
+
+        const text = String(value).trim();
+        if (!text) return "";
+
+        const hm = text.match(/^(\d{1,2}):(\d{2})$/);
+        if (hm) {
+          return `${String(hm[1]).padStart(2, "0")}:${hm[2]}`;
+        }
+
+        if (text.length >= 16 && text[10] === "T") {
+          return text.slice(11, 16);
+        }
+
+        const timestamp = Date.parse(text);
+        if (!Number.isNaN(timestamp)) {
+          const date = new Date(timestamp);
+          return `${String(date.getHours()).padStart(2, "0")}:${
+            String(date.getMinutes()).padStart(2, "0")
+          }`;
+        }
+
+        const fallback = text.match(/(\d{1,2}):(\d{2})/);
+        return fallback
+          ? `${String(fallback[1]).padStart(2, "0")}:${fallback[2]}`
+          : "";
+      }
+
+      function getSortTimeValue(record) {
+        const raw =
+          record?.arrival_time ||
+          record?.completed_at ||
+          record?.created_at ||
+          "";
+
+        if (!raw) return Number.MAX_SAFE_INTEGER;
+
+        const text = String(raw).trim();
+        const hm = text.match(/^(\d{1,2}):(\d{2})$/);
+        if (hm) {
+          return Number(hm[1]) * 60 + Number(hm[2]);
+        }
+
+        const timestamp = Date.parse(text);
+        return Number.isNaN(timestamp)
+          ? Number.MAX_SAFE_INTEGER
+          : timestamp;
+      }
+
+      function isReloadRecord(record) {
+        const eventType = safe(
+          record?.raw?.eventType ||
+          record?.raw?.event_type ||
+          ""
+        ).toLowerCase();
+
+        if (eventType === "reload") return true;
+
+        return (
+          safe(record?.account_number) === "003" &&
+          safe(record?.notes).toLowerCase().startsWith("tdg reload")
+        );
+      }
+
+      function getReloadAmountKg(record) {
+        if (!isReloadRecord(record)) return 0;
+
+        const direct = Number(
+          record?.raw?.reloadAmountKg ??
+          record?.raw?.reload_amount_kg
+        );
+
+        if (Number.isFinite(direct) && direct > 0) {
+          return direct;
+        }
+
+        const notes = safe(record?.notes);
+        const match = notes.match(/reload\s*:\s*\+?([\d,.]+)\s*kg/i);
+        if (!match) return 0;
+
+        const parsed = Number(match[1].replace(/,/g, ""));
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+      }
+
+      function firstNonEmpty(records, getter) {
+        for (const record of records) {
+          const value = getter(record);
+          if (safe(value) !== "") return value;
+        }
+        return "";
+      }
+
+      function lastNonEmpty(records, getter) {
+        for (let i = records.length - 1; i >= 0; i -= 1) {
+          const value = getter(records[i]);
+          if (safe(value) !== "") return value;
+        }
+        return "";
+      }
+
+      function buildDisplayRow(record) {
+        const reload = isReloadRecord(record);
+        const reloadKg = getReloadAmountKg(record);
+
+        const customer = safe(record?.account_name);
+        const address = safe(record?.account_address);
+        const city = safe(record?.account_city);
+        const route = safe(record?.account_route);
+        const location = [customer, address, city, route]
+          .filter(Boolean)
+          .join(" / ");
+
+        return {
+          arrive: formatTime(
+            record?.arrival_time ||
+            record?.completed_at ||
+            record?.created_at
+          ),
+          customerLocation: reload
+            ? `RELOAD — ${location || "Linde Mcphillips Plant"}`
+            : location,
+          accountNumber: safe(record?.account_number),
+          delivered: reload
+            ? ""
+            : safe(record?.delivered_volume),
+          notes: reload
+            ? safe(record?.notes || `TDG Reload: +${reloadKg} kg`)
+            : safe(record?.notes),
+          reload,
+          reloadKg,
+          balanceLbs: "",
+        };
+      }
+
+      function setProductCheckboxes(sheet, records) {
+        const text = JSON.stringify(records).toLowerCase();
+
+        const hasO2 =
+          text.includes("oxygen") ||
+          text.includes("un1073") ||
+          text.includes('"product_oxygen":true');
+
+        const hasN2 =
+          text.includes("nitrogen") ||
+          text.includes("un1977") ||
+          text.includes('"product_nitrogen":true');
+
+        const hasAr =
+          text.includes("argon") ||
+          text.includes("un1951") ||
+          text.includes('"product_argon":true');
+
+        const hasCO2 =
+          text.includes("carbon dioxide") ||
+          text.includes("co2") ||
+          text.includes("un2187");
+
+        setChecked(sheet, "chkO2", hasO2);
+        setChecked(sheet, "chkN2", hasN2);
+        setChecked(sheet, "chkAr", hasAr);
+        setChecked(
+          sheet,
+          "chkCO2",
+          hasCO2 || (!hasO2 && !hasN2 && !hasAr)
+        );
+      }
+
+      function fillSheet(sheet, group, records) {
+        const sorted = [...records].sort(
+          (a, b) => getSortTimeValue(a) - getSortTimeValue(b)
+        );
+
+        const first = sorted[0] || {};
+
+        const startKm = firstNonEmpty(
+          sorted,
+          (record) =>
+            record?.start_km ??
+            record?.raw?.startKm ??
+            ""
+        );
+
+        const endKm = lastNonEmpty(
+          sorted,
+          (record) =>
+            record?.end_km ??
+            record?.raw?.endKm ??
+            ""
+        );
+
+        const totalKm =
+          safe(startKm) !== "" && safe(endKm) !== ""
+            ? String(num(endKm) - num(startKm))
+            : lastNonEmpty(
+                sorted,
+                (record) =>
+                  record?.total_km ??
+                  record?.raw?.totalKm ??
+                  ""
+              );
+
+        const shiftStart = firstNonEmpty(
+          sorted,
+          (record) =>
+            record?.shift_start ??
+            record?.raw?.shiftStart ??
+            record?.raw?.shiftTimeStart ??
+            ""
+        );
+
+        const shiftFinish = lastNonEmpty(
+          sorted,
+          (record) =>
+            record?.shift_finish ??
+            record?.raw?.shiftFinish ??
+            record?.raw?.shiftTimeFinish ??
+            ""
+        );
+
+        const vehicleNo = firstNonEmpty(
+          sorted,
+          (record) =>
+            record?.vehicle_no ??
+            record?.raw?.vehicleNo ??
+            ""
+        );
+
+        const driverName = firstNonEmpty(
+          sorted,
+          (record) =>
+            record?.driver_name ??
+            record?.raw?.driverName ??
+            group?.driverName ??
+            group?.driverNumber ??
+            ""
+        );
+
+        const signature = lastNonEmpty(
+          sorted,
+          (record) =>
+            record?.signature ??
+            record?.raw?.signature ??
+            record?.raw?.signatureText ??
+            ""
+        );
+
+        const tdgStartKg = num(
+          firstNonEmpty(
+            sorted,
+            (record) =>
+              record?.tdg_volume ??
+              record?.raw?.tdgVolume ??
+              record?.raw?.tdgStartVolume ??
+              ""
+          )
+        );
+
+        setText(sheet, "hdrDate", group.date);
+        setText(sheet, "hdrVehicle", vehicleNo);
+        setText(sheet, "hdrStartKm", startKm);
+        setText(sheet, "hdrEndKm", endKm);
+        setText(sheet, "hdrTotalKm", totalKm);
+        setText(sheet, "hdrShiftStart", shiftStart);
+        setText(sheet, "hdrShiftFinish", shiftFinish);
+        setText(sheet, "hdrTdgStart", integerPart(tdgStartKg));
+        setText(sheet, "sigPrint", driverName);
+        setText(sheet, "sigSign", signature);
+        setText(sheet, "sigDate", group.date);
+
+        setProductCheckboxes(sheet, sorted);
+
+        let runningKg = tdgStartKg;
+
+        const displayRows = sorted.map((record) => {
+          const row = buildDisplayRow(record);
+
+          if (row.reload) {
+            runningKg += row.reloadKg;
+          } else {
+            runningKg -= lbsToKg(row.delivered);
+          }
+
+          row.balanceLbs = String(Math.round(kgToLbs(runningKg)));
+          return row;
+        });
+
+        setText(sheet, "hdrTdgRemaining", integerPart(runningKg));
+
+        const tbody = field(sheet, "tbody");
+        if (!tbody) return;
+
+        tbody.innerHTML = displayRows
+          .map(
+            (row) => `
+              <tr>
+                <td class="center">${escapeHtml(row.arrive)}</td>
+                <td>${escapeHtml(row.customerLocation)}</td>
+                <td class="center">${escapeHtml(row.accountNumber)}</td>
+                <td>${escapeHtml(row.delivered)}</td>
+                <td>${escapeHtml(row.balanceLbs)}</td>
+                <td>${escapeHtml(row.notes)}</td>
+              </tr>
+            `
+          )
+          .join("");
+      }
+
+      async function runInChunks(values, worker, chunkSize = 30) {
+        const output = [];
+        for (let i = 0; i < values.length; i += chunkSize) {
+          const chunk = values.slice(i, i + chunkSize);
+          const rows = await worker(chunk);
+          output.push(...(rows || []));
+        }
+        return output;
+      }
+
+      async function loadRecordsForDates(dates) {
+        const uniqueDates = [...new Set(dates.filter(Boolean))];
+        if (!uniqueDates.length) return [];
+
+        const sb = window.supabaseClient;
+        if (!sb?.from) throw new Error("Supabase client not initialized");
+
+        return runInChunks(uniqueDates, async (chunk) => {
+          const { data, error } = await sb
+            .from("tdg_records")
+            .select(`
+              id,
+              owner_id,
+              driver_number,
+              driver_name,
+              work_date,
+              vehicle_no,
+              week_cycle,
+              shift_start,
+              shift_finish,
+              arrival_time,
+              completed_at,
+              account_number,
+              account_name,
+              account_address,
+              account_city,
+              account_route,
+              tdg_volume,
+              delivered_volume,
+              notes,
+              raw,
+              created_at
+            `)
+            .in("work_date", chunk)
+            .order("created_at", { ascending: true });
+
+          if (error) throw error;
+          return data || [];
+        });
+      }
+
+      function recordMatchesGroup(record, group) {
+        if (safe(record?.work_date) !== safe(group?.date)) {
+          return false;
+        }
+
+        if (safe(group?.ownerId)) {
+          return safe(record?.owner_id) === safe(group.ownerId);
+        }
+
+        if (safe(group?.driverNumber)) {
+          return safe(record?.driver_number) === safe(group.driverNumber);
+        }
+
+        return true;
+      }
+
+      async function init() {
+        const sess = window.TDG_AUTH?.requireAuth?.();
+        if (!sess) return;
+
+        const groups = readSelection()
+          .filter((group) => /^\d{4}-\d{2}-\d{2}$/.test(safe(group?.date)));
+
+        if (!groups.length) {
+          document.getElementById("batchStatus").textContent =
+            "No Daily Logs selected.";
+          document.getElementById("sheets").innerHTML =
+            '<div class="error-box">No Batch TDG Daily Log selection was found. Return to History Records and choose the batch function again.</div>';
+          return;
+        }
+
+        try {
+          const allRecords = await loadRecordsForDates(
+            groups.map((group) => group.date)
+          );
+
+          const container = document.getElementById("sheets");
+          const template = document.getElementById("tdgSheetTemplate");
+          let pageCount = 0;
+
+          for (const group of groups) {
+            const records = allRecords.filter((record) =>
+              recordMatchesGroup(record, group)
+            );
+
+            // Requirement: automatically ignore Daily Logs with no records.
+            if (!records.length) continue;
+
+            const fragment = template.content.cloneNode(true);
+            const sheet = fragment.querySelector(".sheet");
+            if (!sheet) continue;
+
+            fillSheet(sheet, group, records);
+            container.appendChild(fragment);
+            pageCount += 1;
+          }
+
+          if (!pageCount) {
+            document.getElementById("batchStatus").textContent =
+              "No printable Daily Logs found.";
+            container.innerHTML =
+              '<div class="error-box">All selected Daily Logs were empty or are no longer available. Empty Daily Logs are automatically ignored.</div>';
+            return;
+          }
+
+          document.getElementById("batchStatus").textContent =
+            `${pageCount} TDG Daily Log${pageCount === 1 ? "" : "s"} ready · empty dates ignored`;
+
+          document.getElementById("btnPrint").disabled = false;
+          document.title = `Batch TDG Daily Logs (${pageCount})`;
+        } catch (error) {
+          console.error("Batch TDG Daily Log load failed:", error);
+          document.getElementById("batchStatus").textContent = "Load failed";
+          document.getElementById("sheets").innerHTML =
+            `<div class="error-box">Failed to load Daily Logs: ${escapeHtml(
+              error?.message || error
+            )}</div>`;
+        }
+      }
+
+      document.getElementById("btnPrint").addEventListener("click", () => {
+        window.print();
+      });
+
+      document.getElementById("btnClose").addEventListener("click", () => {
+        window.close();
+      });
+
+      document.addEventListener("DOMContentLoaded", init);
+    </script>
+  </body>
+</html>
