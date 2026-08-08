@@ -176,6 +176,42 @@
         border: 1px dashed rgba(255, 255, 255, 0.16);
         border-radius: 14px;
       }
+
+      .batch-search-panel {
+        margin-bottom: 14px;
+        padding: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+      .batch-search-grid {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .batch-search-actions {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+        margin-top: 12px;
+      }
+      .batch-search-stats {
+        margin-top: 10px;
+        font-size: 13px;
+        opacity: 0.8;
+      }
+      @media (max-width: 1000px) {
+        .batch-search-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+      @media (max-width: 600px) {
+        .batch-search-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
       @media (max-width: 600px) {
         .batch-modal {
           padding: 0;
@@ -368,6 +404,74 @@
         </div>
 
         <div class="batch-dialog-bd">
+          <div class="batch-search-panel" id="batchFillSearchPanel" hidden>
+            <div class="batch-search-grid">
+              <div>
+                <label for="batchFillWeekCycle">Week Cycle</label>
+                <select id="batchFillWeekCycle">
+                  <option value="">All</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                  <option value="5">5</option>
+                  <option value="6">6</option>
+                  <option value="7">7</option>
+                  <option value="8">8</option>
+                </select>
+              </div>
+
+              <div>
+                <label for="batchFillDriver">Driver Number</label>
+                <input
+                  id="batchFillDriver"
+                  autocomplete="off"
+                  placeholder="Driver Number"
+                />
+              </div>
+
+              <div>
+                <label for="batchFillAccount">Account Number</label>
+                <input
+                  id="batchFillAccount"
+                  autocomplete="off"
+                  placeholder="Partial match allowed"
+                />
+              </div>
+
+              <div>
+                <label for="batchFillDateFrom">Date From</label>
+                <input id="batchFillDateFrom" type="date" />
+              </div>
+
+              <div>
+                <label for="batchFillDateTo">Date To</label>
+                <input id="batchFillDateTo" type="date" />
+              </div>
+            </div>
+
+            <div class="batch-search-actions">
+              <button
+                class="btn secondary"
+                id="btnBatchFillResetSearch"
+                type="button"
+              >
+                Reset
+              </button>
+              <button
+                class="btn ok"
+                id="btnBatchFillSearch"
+                type="button"
+              >
+                Search Fill Logs
+              </button>
+            </div>
+
+            <div class="batch-search-stats" id="batchFillSearchStats">
+              Choose one or more search conditions, then click Search Fill Logs.
+            </div>
+          </div>
+
           <div class="batch-list" id="batchList"></div>
         </div>
 
@@ -413,6 +517,13 @@
 
       let _batchMode = "";
       let _batchEntries = [];
+      let _batchFillFilters = {
+        weekCycle: "",
+        driverNumber: "",
+        accountNumber: "",
+        dateFrom: "",
+        dateTo: "",
+      };
 
       let _all = [];
       let _filtered = [];
@@ -689,6 +800,147 @@
         return hasSearchResultsOpen ? _filtered : _all;
       }
 
+      function getBatchFillFilters() {
+        return {
+          weekCycle: safe($("batchFillWeekCycle")?.value),
+          driverNumber: safe($("batchFillDriver")?.value),
+          accountNumber: safe($("batchFillAccount")?.value),
+          dateFrom: safe($("batchFillDateFrom")?.value),
+          dateTo: safe($("batchFillDateTo")?.value),
+        };
+      }
+
+      function resetBatchFillSearch(sess = null) {
+        if ($("batchFillWeekCycle")) $("batchFillWeekCycle").value = "";
+        if ($("batchFillAccount")) $("batchFillAccount").value = "";
+        if ($("batchFillDateFrom")) $("batchFillDateFrom").value = "";
+        if ($("batchFillDateTo")) $("batchFillDateTo").value = "";
+
+        const currentSession =
+          sess ||
+          window.TDG_AUTH?.getSession?.() ||
+          null;
+
+        const driverNumber = safe(
+          currentSession?.driverNumber ||
+          currentSession?.username ||
+          ""
+        );
+
+        if ($("batchFillDriver")) {
+          $("batchFillDriver").value = driverNumber;
+        }
+
+        _batchFillFilters = getBatchFillFilters();
+        _batchEntries = [];
+
+        const list = $("batchList");
+        if (list) {
+          list.innerHTML = `
+            <div class="batch-empty">
+              Set your Fill Log search range above, then click Search Fill Logs.
+            </div>
+          `;
+        }
+
+        const stats = $("batchFillSearchStats");
+        if (stats) {
+          stats.textContent =
+            "Choose Week Cycle, Driver Number, Account Number and/or any date range.";
+        }
+
+        updateBatchSelectionSummary();
+      }
+
+      function recordMatchesBatchFillFilters(record, filters) {
+        if (isReloadRecord(record)) return false;
+
+        const accountNumber = safe(record?.accountNumber);
+        if (!accountNumber) return false;
+
+        if (
+          filters.weekCycle &&
+          safe(record?.weekCycle) !== filters.weekCycle
+        ) {
+          return false;
+        }
+
+        if (
+          filters.driverNumber &&
+          !norm(record?.driverNumber).includes(norm(filters.driverNumber))
+        ) {
+          return false;
+        }
+
+        if (
+          filters.accountNumber &&
+          !norm(accountNumber).includes(norm(filters.accountNumber))
+        ) {
+          return false;
+        }
+
+        const workDate = safe(record?.date);
+
+        if (filters.dateFrom && (!workDate || workDate < filters.dateFrom)) {
+          return false;
+        }
+
+        if (filters.dateTo && (!workDate || workDate > filters.dateTo)) {
+          return false;
+        }
+
+        return true;
+      }
+
+      function searchBatchFillLogs() {
+        const filters = getBatchFillFilters();
+
+        if (
+          filters.dateFrom &&
+          filters.dateTo &&
+          filters.dateFrom > filters.dateTo
+        ) {
+          alert("Date From cannot be later than Date To.");
+          return;
+        }
+
+        _batchFillFilters = filters;
+
+        const matchingRecords = _all.filter((record) =>
+          recordMatchesBatchFillFilters(record, filters)
+        );
+
+        _batchEntries = buildBatchFillEntries(matchingRecords);
+        renderBatchEntries();
+
+        const stats = $("batchFillSearchStats");
+        if (stats) {
+          const parts = [];
+
+          if (filters.weekCycle) {
+            parts.push(`Week ${filters.weekCycle}`);
+          }
+          if (filters.driverNumber) {
+            parts.push(`Driver ${filters.driverNumber}`);
+          }
+          if (filters.accountNumber) {
+            parts.push(`Account contains ${filters.accountNumber}`);
+          }
+          if (filters.dateFrom || filters.dateTo) {
+            parts.push(
+              `Date ${filters.dateFrom || "Any"} → ${filters.dateTo || "Any"}`
+            );
+          }
+
+          stats.textContent =
+            `${matchingRecords.length} matching delivery record` +
+            `${matchingRecords.length === 1 ? "" : "s"} · ` +
+            `${_batchEntries.length} unique account` +
+            `${_batchEntries.length === 1 ? "" : "s"}` +
+            (parts.length ? ` · ${parts.join(" · ")}` : " · No range restriction");
+        }
+      }
+
       function buildBatchFillEntries(records) {
         const map = new Map();
 
@@ -823,7 +1075,6 @@
                   <input
                     type="checkbox"
                     data-batch-key="${escapeHtml(entry.key)}"
-                    checked
                   />
                   <span class="batch-item-main">
                     <span class="batch-item-name">
@@ -887,23 +1138,26 @@
       }
 
       function openBatchModal(mode) {
-        const source = getCurrentBatchSource();
-
         _batchMode = mode;
-        _batchEntries =
-          mode === "fill"
-            ? buildBatchFillEntries(source)
-            : buildBatchTdgEntries(source);
 
         const title = $("batchModalTitle");
-        if (title) {
-          title.textContent =
-            mode === "fill"
-              ? "Batch Fill Logs"
-              : "Batch TDG Daily Logs";
-        }
+        const fillSearchPanel = $("batchFillSearchPanel");
 
-        renderBatchEntries();
+        if (mode === "fill") {
+          if (title) title.textContent = "Batch Fill Logs";
+          if (fillSearchPanel) fillSearchPanel.hidden = false;
+
+          resetBatchFillSearch(
+            window.TDG_AUTH?.getSession?.() || null
+          );
+        } else {
+          if (title) title.textContent = "Batch TDG Daily Logs";
+          if (fillSearchPanel) fillSearchPanel.hidden = true;
+
+          const source = getCurrentBatchSource();
+          _batchEntries = buildBatchTdgEntries(source);
+          renderBatchEntries();
+        }
 
         const modal = $("batchModal");
         if (!modal) return;
@@ -942,12 +1196,16 @@
         if (_batchMode === "fill") {
           const payload = {
             createdAt: new Date().toISOString(),
+            filters: {
+              ..._batchFillFilters,
+            },
             accounts: selected.map((entry) => ({
               accountNumber: entry.accountNumber,
               accountName: entry.accountName,
               accountAddress: entry.accountAddress,
               accountCity: entry.accountCity,
               accountRoute: entry.accountRoute,
+              matchingRecordCount: entry.count,
             })),
           };
 
@@ -1125,6 +1383,33 @@
 
         $("btnBatchTDG")?.addEventListener("click", () => {
           openBatchModal("tdg");
+        });
+
+        $("btnBatchFillSearch")?.addEventListener(
+          "click",
+          searchBatchFillLogs
+        );
+
+        $("btnBatchFillResetSearch")?.addEventListener(
+          "click",
+          () => {
+            resetBatchFillSearch(sess);
+          }
+        );
+
+        [
+          "batchFillWeekCycle",
+          "batchFillDriver",
+          "batchFillAccount",
+          "batchFillDateFrom",
+          "batchFillDateTo",
+        ].forEach((id) => {
+          $(id)?.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              searchBatchFillLogs();
+            }
+          });
         });
 
         $("btnBatchClose")?.addEventListener("click", closeBatchModal);
