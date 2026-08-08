@@ -258,9 +258,6 @@
             <button class="btn ok" id="btnBatchTDG" type="button">
               Batch TDG Daily Logs
             </button>
-            <button class="btn" id="btnDailyLog" type="button">
-              TDG Daily Log
-            </button>
             <button class="btn secondary" id="btnBack" type="button">
               ← Back
             </button>
@@ -472,6 +469,54 @@
             </div>
           </div>
 
+          <div class="batch-search-panel" id="batchTdgSearchPanel" hidden>
+            <div
+              class="batch-search-grid"
+              style="grid-template-columns: repeat(3, minmax(0, 1fr));"
+            >
+              <div>
+                <label for="batchTdgDriver">Driver Number</label>
+                <input
+                  id="batchTdgDriver"
+                  autocomplete="off"
+                  placeholder="Driver Number"
+                />
+              </div>
+
+              <div>
+                <label for="batchTdgDateFrom">Date From</label>
+                <input id="batchTdgDateFrom" type="date" />
+              </div>
+
+              <div>
+                <label for="batchTdgDateTo">Date To</label>
+                <input id="batchTdgDateTo" type="date" />
+              </div>
+            </div>
+
+            <div class="batch-search-actions">
+              <button
+                class="btn secondary"
+                id="btnBatchTdgResetSearch"
+                type="button"
+              >
+                Reset
+              </button>
+
+              <button
+                class="btn ok"
+                id="btnBatchTdgSearch"
+                type="button"
+              >
+                Search Daily Logs
+              </button>
+            </div>
+
+            <div class="batch-search-stats" id="batchTdgSearchStats">
+              Choose Driver Number and/or a date range, then click Search Daily Logs.
+            </div>
+          </div>
+
           <div class="batch-list" id="batchList"></div>
         </div>
 
@@ -517,6 +562,11 @@
 
       let _batchMode = "";
       let _batchEntries = [];
+      let _batchTdgFilters = {
+        driverNumber: "",
+        dateFrom: "",
+        dateTo: "",
+      };
       let _batchFillFilters = {
         weekCycle: "",
         driverNumber: "",
@@ -973,6 +1023,132 @@
         );
       }
 
+      function getBatchTdgFilters() {
+        return {
+          driverNumber: safe($("batchTdgDriver")?.value),
+          dateFrom: safe($("batchTdgDateFrom")?.value),
+          dateTo: safe($("batchTdgDateTo")?.value),
+        };
+      }
+
+      function resetBatchTdgSearch(sess = null) {
+        const currentSession =
+          sess ||
+          window.TDG_AUTH?.getSession?.() ||
+          null;
+
+        const driverNumber = safe(
+          currentSession?.driverNumber ||
+          currentSession?.username ||
+          ""
+        );
+
+        if ($("batchTdgDriver")) {
+          $("batchTdgDriver").value = driverNumber;
+        }
+
+        if ($("batchTdgDateFrom")) {
+          $("batchTdgDateFrom").value = "";
+        }
+
+        if ($("batchTdgDateTo")) {
+          $("batchTdgDateTo").value = "";
+        }
+
+        _batchTdgFilters = getBatchTdgFilters();
+        _batchEntries = [];
+
+        const list = $("batchList");
+        if (list) {
+          list.innerHTML = `
+            <div class="batch-empty">
+              Set Driver Number and/or a date range above, then click Search Daily Logs.
+            </div>
+          `;
+        }
+
+        const stats = $("batchTdgSearchStats");
+        if (stats) {
+          stats.textContent =
+            "Only dates with actual TDG records will be shown. Empty dates are ignored automatically.";
+        }
+
+        updateBatchSelectionSummary();
+      }
+
+      function recordMatchesBatchTdgFilters(record, filters) {
+        const workDate = safe(record?.date);
+        if (!workDate) return false;
+
+        if (
+          filters.driverNumber &&
+          !norm(record?.driverNumber).includes(norm(filters.driverNumber))
+        ) {
+          return false;
+        }
+
+        if (
+          filters.dateFrom &&
+          workDate < filters.dateFrom
+        ) {
+          return false;
+        }
+
+        if (
+          filters.dateTo &&
+          workDate > filters.dateTo
+        ) {
+          return false;
+        }
+
+        return true;
+      }
+
+      function searchBatchTdgLogs() {
+        const filters = getBatchTdgFilters();
+
+        if (
+          filters.dateFrom &&
+          filters.dateTo &&
+          filters.dateFrom > filters.dateTo
+        ) {
+          alert("Date From cannot be later than Date To.");
+          return;
+        }
+
+        _batchTdgFilters = filters;
+
+        const matchingRecords = _all.filter((record) =>
+          recordMatchesBatchTdgFilters(record, filters)
+        );
+
+        _batchEntries = buildBatchTdgEntries(matchingRecords);
+        renderBatchEntries();
+
+        const stats = $("batchTdgSearchStats");
+        if (stats) {
+          const parts = [];
+
+          if (filters.driverNumber) {
+            parts.push(`Driver ${filters.driverNumber}`);
+          }
+
+          if (filters.dateFrom || filters.dateTo) {
+            parts.push(
+              `Date ${filters.dateFrom || "Any"} → ${filters.dateTo || "Any"}`
+            );
+          }
+
+          stats.textContent =
+            `${matchingRecords.length} matching record` +
+            `${matchingRecords.length === 1 ? "" : "s"} · ` +
+            `${_batchEntries.length} Daily Log` +
+            `${_batchEntries.length === 1 ? "" : "s"} available` +
+            (parts.length ? ` · ${parts.join(" · ")}` : "") +
+            " · empty dates ignored";
+        }
+      }
+
       function buildBatchTdgEntries(records) {
         const map = new Map();
 
@@ -1142,10 +1318,12 @@
 
         const title = $("batchModalTitle");
         const fillSearchPanel = $("batchFillSearchPanel");
+        const tdgSearchPanel = $("batchTdgSearchPanel");
 
         if (mode === "fill") {
           if (title) title.textContent = "Batch Fill Logs";
           if (fillSearchPanel) fillSearchPanel.hidden = false;
+          if (tdgSearchPanel) tdgSearchPanel.hidden = true;
 
           resetBatchFillSearch(
             window.TDG_AUTH?.getSession?.() || null
@@ -1153,10 +1331,11 @@
         } else {
           if (title) title.textContent = "Batch TDG Daily Logs";
           if (fillSearchPanel) fillSearchPanel.hidden = true;
+          if (tdgSearchPanel) tdgSearchPanel.hidden = false;
 
-          const source = getCurrentBatchSource();
-          _batchEntries = buildBatchTdgEntries(source);
-          renderBatchEntries();
+          resetBatchTdgSearch(
+            window.TDG_AUTH?.getSession?.() || null
+          );
         }
 
         const modal = $("batchModal");
@@ -1221,6 +1400,9 @@
 
         const payload = {
           createdAt: new Date().toISOString(),
+          filters: {
+            ..._batchTdgFilters,
+          },
           groups: selected.map((entry) => ({
             ownerId: entry.ownerId,
             driverNumber: entry.driverNumber,
@@ -1397,6 +1579,31 @@
           }
         );
 
+        $("btnBatchTdgSearch")?.addEventListener(
+          "click",
+          searchBatchTdgLogs
+        );
+
+        $("btnBatchTdgResetSearch")?.addEventListener(
+          "click",
+          () => {
+            resetBatchTdgSearch(sess);
+          }
+        );
+
+        [
+          "batchTdgDriver",
+          "batchTdgDateFrom",
+          "batchTdgDateTo",
+        ].forEach((id) => {
+          $(id)?.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              searchBatchTdgLogs();
+            }
+          });
+        });
+
         [
           "batchFillWeekCycle",
           "batchFillDriver",
@@ -1442,8 +1649,6 @@
             closeBatchModal();
           }
         });
-
-        $("btnDailyLog")?.addEventListener("click", openDailyLog);
 
         $("btnBack")?.addEventListener("click", () => {
           window.location.href = "./index.html";
