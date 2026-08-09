@@ -186,7 +186,7 @@
       }
       .batch-search-grid {
         display: grid;
-        grid-template-columns: repeat(5, minmax(0, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 10px;
       }
       .batch-search-actions {
@@ -419,6 +419,13 @@
               </div>
 
               <div>
+                <label for="batchFillRoute">Route</label>
+                <select id="batchFillRoute">
+                  <option value="">All</option>
+                </select>
+              </div>
+
+              <div>
                 <label for="batchFillDriver">Driver Number</label>
                 <input
                   id="batchFillDriver"
@@ -541,7 +548,7 @@
       </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="./js/supabaseConfig.js"></script>
     <script src="./js/supabaseClient.js"></script>
     <script src="./js/auth_supabase.js"></script>
@@ -569,6 +576,7 @@
       };
       let _batchFillFilters = {
         weekCycle: "",
+        route: "",
         driverNumber: "",
         accountNumber: "",
         dateFrom: "",
@@ -850,9 +858,34 @@
         return hasSearchResultsOpen ? _filtered : _all;
       }
 
+      function populateBatchFillRouteOptions() {
+        const select = $("batchFillRoute");
+        if (!select) return;
+
+        const routes = [
+          ...new Set(
+            _all
+              .map((record) => safe(record?.accountRoute))
+              .filter(Boolean)
+          ),
+        ].sort((a, b) =>
+          a.localeCompare(b, undefined, {
+            numeric: true,
+            sensitivity: "base",
+          })
+        );
+
+        select.replaceChildren(new Option("All", ""));
+
+        routes.forEach((route) => {
+          select.add(new Option(route, route));
+        });
+      }
+
       function getBatchFillFilters() {
         return {
           weekCycle: safe($("batchFillWeekCycle")?.value),
+          route: safe($("batchFillRoute")?.value),
           driverNumber: safe($("batchFillDriver")?.value),
           accountNumber: safe($("batchFillAccount")?.value),
           dateFrom: safe($("batchFillDateFrom")?.value),
@@ -861,7 +894,10 @@
       }
 
       function resetBatchFillSearch(sess = null) {
+        populateBatchFillRouteOptions();
+
         if ($("batchFillWeekCycle")) $("batchFillWeekCycle").value = "";
+        if ($("batchFillRoute")) $("batchFillRoute").value = "";
         if ($("batchFillAccount")) $("batchFillAccount").value = "";
         if ($("batchFillDateFrom")) $("batchFillDateFrom").value = "";
         if ($("batchFillDateTo")) $("batchFillDateTo").value = "";
@@ -896,7 +932,7 @@
         const stats = $("batchFillSearchStats");
         if (stats) {
           stats.textContent =
-            "Choose Week Cycle, Driver Number, Account Number and/or any date range.";
+            "Choose Week Cycle, Route, Driver Number, Account Number and/or any date range.";
         }
 
         updateBatchSelectionSummary();
@@ -911,6 +947,13 @@
         if (
           filters.weekCycle &&
           safe(record?.weekCycle) !== filters.weekCycle
+        ) {
+          return false;
+        }
+
+        if (
+          filters.route &&
+          norm(record?.accountRoute) !== norm(filters.route)
         ) {
           return false;
         }
@@ -969,6 +1012,9 @@
 
           if (filters.weekCycle) {
             parts.push(`Week ${filters.weekCycle}`);
+          }
+          if (filters.route) {
+            parts.push(`Route ${filters.route}`);
           }
           if (filters.driverNumber) {
             parts.push(`Driver ${filters.driverNumber}`);
@@ -1606,6 +1652,7 @@
 
         [
           "batchFillWeekCycle",
+          "batchFillRoute",
           "batchFillDriver",
           "batchFillAccount",
           "batchFillDateFrom",
