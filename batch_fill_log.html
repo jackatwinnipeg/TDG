@@ -201,7 +201,7 @@
 
     <main id="sheets"></main>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="./js/supabaseConfig.js"></script>
     <script src="./js/supabaseClient.js"></script>
     <script src="./js/auth_supabase.js"></script>
@@ -469,7 +469,8 @@
 
         const sortedRows = [...records]
           .sort((a, b) => getSortTime(b) - getSortTime(a))
-          .slice(0, MAX_ROWS);
+          .slice(0, MAX_ROWS)
+          .reverse();
 
         const bodyRows = [];
 
