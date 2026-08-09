@@ -143,6 +143,7 @@ const LS_DRAFT = "tdg_draft_v3";
 const LS_CYCLE = "tdg_week_cycle_v3";
 const LS_RECORDS = "tdg_records_v3";
 const LS_PENDING_SYNC = "tdg_pending_sync_v1";
+const TDG_RESET_DATE = window.TDG_VOLUME?.RESET_DATE || "2026-08-10";
 
 // ---------------------------
 // Per-driver Yesterday
@@ -304,22 +305,7 @@ function integerPart(value) {
 }
 
 function getReloadAmountKg(record) {
-  const raw = record?.raw && typeof record.raw === "object" ? record.raw : {};
-  const eventType = String(
-    record?.eventType ?? raw?.eventType ?? raw?.event_type ?? "",
-  ).toLowerCase();
-
-  if (eventType !== "reload") return 0;
-
-  const amount = Number(
-    record?.reloadAmountKg ??
-      record?.reload_amount_kg ??
-      raw?.reloadAmountKg ??
-      raw?.reload_amount_kg ??
-      0,
-  );
-
-  return Number.isFinite(amount) && amount > 0 ? amount : 0;
+  return window.TDG_VOLUME?.getReloadAmountKg?.(record) || 0;
 }
 
 function computeRemainingTDG(baseTdgKg, records) {
@@ -435,13 +421,8 @@ function getFormData() {
     driverName: sess?.displayName || sess?.username || $("driverName")?.value.trim() || "",
     date: $("date")?.value || "",
     vehicleNo: $("vehicleNo")?.value.trim() || "",
-    startKm: $("startKm")?.value === ""
-              ? ""
-             : Number($("startKm").value),
-
-    endKm: $("endKm")?.value === ""
-              ? ""
-             : Number($("endKm").value),
+    startKm: Number($("startKm")?.value || 0),
+    endKm: Number($("endKm")?.value || 0),
     totalKm: Number($("totalKm")?.value || 0),
     tdgVolume: Number($("tdgVolume")?.value || 0),
     weekCycle: Number($("weekCycle")?.value || 1),
@@ -896,7 +877,12 @@ async function getAuthTokenSafe() {
     console.warn("getAuthTokenSafe: supabase session read failed:", e);
   }
 
-  return "";
+  return (
+    localStorage.getItem("token") ||
+    localStorage.getItem("access_token") ||
+    localStorage.getItem("jwt") ||
+    ""
+  );
 }
 
 function enqueuePendingSync(payload, errorMsg) {
@@ -936,6 +922,7 @@ function buildDailyPayload(reason) {
     arriveState: { arrived: !!isArrived, arrivalTime: arrivalTime || "" },
     tdg: {
       base: cal.base,
+      totalReloadKg: cal.totalReloadKg,
       totalDelivered: cal.totalDelivered,
       remaining: cal.remaining,
     },
@@ -1049,6 +1036,12 @@ function genClientRecordId() {
 
 function buildRecordRowForSupabase(rec, ownerId) {
   const workDate = rec.date || tdgLocalDate();
+  const tdgVolume = Number(rec.tdgVolume ?? rec.tdg_volume);
+  const rawPayload = window.TDG_VOLUME?.flattenRawRecord?.(rec) || {
+    ...rec,
+    raw: undefined,
+  };
+
   return {
     client_record_id: rec.clientRecordId,
     owner_id: ownerId,
@@ -1070,10 +1063,11 @@ function buildRecordRowForSupabase(rec, ownerId) {
     account_city: rec.accountCity || rec.account_city || "",
     account_route: rec.accountRoute || rec.account_route || "",
 
-    tdg_volume: Number(rec.tdgVolume ?? rec.tdg_volume ?? 0) || null,
+    tdg_volume:
+      Number.isFinite(tdgVolume) && tdgVolume >= 0 ? tdgVolume : null,
     delivered_volume: Number(rec.deliveredVolume ?? rec.delivered_volume ?? 0) || 0,
     notes: rec.notes || "",
-    raw: rec,
+    raw: rawPayload,
   };
 }
 
@@ -1255,7 +1249,10 @@ async function logoutFlow() {
     } catch {}
 
     try {
-      await window.TDG_AUTH?.logout?.();
+      await window.supabaseClient?.auth?.signOut?.();
+    } catch {}
+    try {
+      window.TDG_AUTH?.logout?.();
       return;
     } catch {}
 
@@ -2050,8 +2047,8 @@ function tdgPullKey(driverNumber) {
   return "tdg_last_pull_v1__" + (driverNumber || "unknown");
 }
 
-const LS_PREVIOUS_TDG_CACHE_PREFIX = "tdg_previous_tdg_balance_v2";
-const LS_PREVIOUS_TDG_IMPORT_PREFIX = "tdg_previous_tdg_import_v2";
+const LS_PREVIOUS_TDG_CACHE_PREFIX = "tdg_previous_tdg_balance_v3";
+const LS_PREVIOUS_TDG_IMPORT_PREFIX = "tdg_previous_tdg_import_v3";
 
 function formatTdgDate(date) {
   const year = date.getFullYear();
@@ -2070,27 +2067,77 @@ function getPreviousCalendarDate(sourceDate = new Date()) {
   );
 }
 
-function previousTdgCacheKey(ownerId) {
-  return `${LS_PREVIOUS_TDG_CACHE_PREFIX}__${ownerId || "unknown"}`;
+function currentTdgVehicleNo() {
+  const sess = window.TDG_AUTH?.getSession?.();
+  const value = $("vehicleNo")?.value || sess?.vehicleNo || "";
+  return window.TDG_VOLUME?.normalizeVehicleNo?.(value) || String(value).trim();
 }
 
-function previousTdgImportKey(ownerId) {
-  return `${LS_PREVIOUS_TDG_IMPORT_PREFIX}__${ownerId || "unknown"}`;
+function previousTdgCacheKey(ownerId, vehicleNo = currentTdgVehicleNo()) {
+  return `${LS_PREVIOUS_TDG_CACHE_PREFIX}__${ownerId || "unknown"}__${vehicleNo || "unknown"}`;
 }
 
-function readPreviousTdgCache(ownerId) {
+function previousTdgImportKey(ownerId, vehicleNo = currentTdgVehicleNo()) {
+  return `${LS_PREVIOUS_TDG_IMPORT_PREFIX}__${ownerId || "unknown"}__${vehicleNo || "unknown"}`;
+}
+
+function readPreviousTdgCache(ownerId, vehicleNo) {
   try {
-    const raw = localStorage.getItem(previousTdgCacheKey(ownerId));
+    const raw = localStorage.getItem(previousTdgCacheKey(ownerId, vehicleNo));
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }
 }
 
-function savePreviousTdgCache(ownerId, value) {
+function savePreviousTdgCache(ownerId, vehicleNo, value) {
   try {
-    localStorage.setItem(previousTdgCacheKey(ownerId), JSON.stringify(value));
+    localStorage.setItem(
+      previousTdgCacheKey(ownerId, vehicleNo),
+      JSON.stringify(value),
+    );
   } catch {}
+}
+
+function buildTdgBalanceResult({
+  ownerId,
+  vehicleNo,
+  targetDate,
+  balanceDate,
+  rows,
+  baseTdgKg,
+  source,
+}) {
+  const list = Array.isArray(rows) ? rows : [];
+  const totalReloadKg = list.reduce(
+    (sum, row) => sum + getReloadAmountKg(row),
+    0,
+  );
+  const totalDeliveredLbs = list.reduce(
+    (sum, row) => sum + (Number(row?.delivered_volume) || 0),
+    0,
+  );
+  const totalDeliveredKg = totalDeliveredLbs * LBS_TO_KG;
+  const remainingKg = integerPart(
+    Number(baseTdgKg || 0) + totalReloadKg - totalDeliveredKg,
+  );
+
+  return {
+    ownerId,
+    vehicleNo,
+    targetDate,
+    previousDate: balanceDate,
+    balanceDate,
+    found: true,
+    recordCount: list.length,
+    baseTdgKg: Number(baseTdgKg || 0),
+    totalReloadKg,
+    totalDeliveredLbs,
+    totalDeliveredKg,
+    remainingKg,
+    source,
+    calculatedAt: tdgLocalDateTimeISO(),
+  };
 }
 
 async function fetchPreviousDayTdgBalanceFromSupabase() {
@@ -2104,15 +2151,44 @@ async function fetchPreviousDayTdgBalanceFromSupabase() {
     throw new Error("No login session");
   }
 
+  const targetDate = tdgToday();
   const previousDate = getPreviousCalendarDate();
+  const vehicleNo = currentTdgVehicleNo();
+  const usesResetBaseline =
+    window.TDG_VOLUME?.isResetVehicle?.(vehicleNo) &&
+    targetDate >= TDG_RESET_DATE;
 
-  const { data, error } = await sb
+  if (usesResetBaseline && targetDate === TDG_RESET_DATE) {
+    return buildTdgBalanceResult({
+      ownerId: sess.userId,
+      vehicleNo,
+      targetDate,
+      balanceDate: TDG_RESET_DATE,
+      rows: [],
+      baseTdgKg: 0,
+      source: "fleet_reset",
+    });
+  }
+
+  let query = sb
     .from("tdg_records")
     .select(
-      "id, owner_id, work_date, tdg_volume, delivered_volume, raw, completed_at, created_at",
+      "id, owner_id, work_date, vehicle_no, tdg_volume, delivered_volume, notes, raw, completed_at, created_at",
     )
-    .eq("owner_id", sess.userId)
-    .eq("work_date", previousDate)
+    .eq("owner_id", sess.userId);
+
+  if (vehicleNo) {
+    query = query.eq("vehicle_no", vehicleNo);
+  }
+
+  if (usesResetBaseline) {
+    query = query.gte("work_date", TDG_RESET_DATE).lte("work_date", previousDate);
+  } else {
+    query = query.eq("work_date", previousDate);
+  }
+
+  const { data, error } = await query
+    .order("work_date", { ascending: true })
     .order("completed_at", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: true });
 
@@ -2120,44 +2196,82 @@ async function fetchPreviousDayTdgBalanceFromSupabase() {
     throw new Error(`读取前一天 TDG 记录失败：${error.message}`);
   }
 
-  const rows = Array.isArray(data) ? data : [];
-  let baseTdgKg = 0;
+  const allRows = Array.isArray(data) ? data : [];
 
+  if (usesResetBaseline && !allRows.length) {
+    return buildTdgBalanceResult({
+      ownerId: sess.userId,
+      vehicleNo,
+      targetDate,
+      balanceDate: TDG_RESET_DATE,
+      rows: [],
+      baseTdgKg: 0,
+      source: "fleet_reset",
+    });
+  }
+
+  const balanceDate = usesResetBaseline
+    ? allRows.reduce(
+        (latest, row) =>
+          String(row?.work_date || "") > latest
+            ? String(row.work_date)
+            : latest,
+        TDG_RESET_DATE,
+      )
+    : previousDate;
+  const rows = usesResetBaseline
+    ? allRows.filter((row) => row?.work_date === balanceDate)
+    : allRows;
+
+  let baseTdgKg = null;
   for (const row of rows) {
-    const candidate = Number(row?.tdg_volume);
-    if (Number.isFinite(candidate) && candidate > 0) {
+    const candidate = window.TDG_VOLUME?.getTdgStartKg?.(row);
+    if (candidate !== null && candidate !== undefined) {
       baseTdgKg = candidate;
       break;
     }
   }
 
-  const totalReloadKg = rows.reduce(
-    (sum, row) => sum + getReloadAmountKg(row),
-    0,
-  );
-  const totalDeliveredLbs = rows.reduce(
-    (sum, row) => sum + (Number(row?.delivered_volume) || 0),
-    0,
-  );
-  const totalDeliveredKg = totalDeliveredLbs * LBS_TO_KG;
-  const remainingKg =
-    baseTdgKg > 0
-      ? integerPart(baseTdgKg + totalReloadKg - totalDeliveredKg)
-      : null;
+  if (usesResetBaseline) {
+    return buildTdgBalanceResult({
+      ownerId: sess.userId,
+      vehicleNo,
+      targetDate,
+      balanceDate,
+      rows,
+      baseTdgKg: baseTdgKg ?? 0,
+      source: "supabase_since_fleet_reset",
+    });
+  }
 
-  return {
+  if (!(Number(baseTdgKg) > 0)) {
+    return {
+      ownerId: sess.userId,
+      vehicleNo,
+      targetDate,
+      previousDate,
+      balanceDate: previousDate,
+      found: false,
+      recordCount: rows.length,
+      baseTdgKg: 0,
+      totalReloadKg: 0,
+      totalDeliveredLbs: 0,
+      totalDeliveredKg: 0,
+      remainingKg: null,
+      source: "supabase",
+      calculatedAt: tdgLocalDateTimeISO(),
+    };
+  }
+
+  return buildTdgBalanceResult({
     ownerId: sess.userId,
-    previousDate,
-    found: rows.length > 0 && baseTdgKg > 0,
-    recordCount: rows.length,
+    vehicleNo,
+    targetDate,
+    balanceDate: previousDate,
+    rows,
     baseTdgKg,
-    totalReloadKg,
-    totalDeliveredLbs,
-    totalDeliveredKg,
-    remainingKg,
     source: "supabase",
-    calculatedAt: tdgLocalDateTimeISO(),
-  };
+  });
 }
 
 function applyPreviousDayTdgBalance(
@@ -2180,9 +2294,18 @@ function applyPreviousDayTdgBalance(
   saveIndexState();
 
   if (showMessage) {
+    if (balance?.source === "fleet_reset") {
+      toast(
+        "TDG 余量已归零",
+        `${balance.vehicleNo || "当前车辆"} 从 ${TDG_RESET_DATE} 起始余量为 0 kg。`,
+      );
+      return true;
+    }
+
     toast(
-      "已导入前一天余量",
-      `${balance.previousDate}: ${balance.baseTdgKg} kg - ` +
+      "已导入车辆余量",
+      `${balance.balanceDate || balance.previousDate}: ${balance.baseTdgKg} kg + ` +
+        `${balance.totalReloadKg || 0} kg Reload - ` +
         `${balance.totalDeliveredLbs} lbs (${integerPart(
           balance.totalDeliveredKg,
         )} kg) = ${integerPart(remainingKg)} kg`,
@@ -2199,7 +2322,8 @@ async function importPreviousDayTdgBalanceOncePerDay({ force = false } = {}) {
   }
 
   const today = tdgToday();
-  const importKey = previousTdgImportKey(sess.userId);
+  const vehicleNo = currentTdgVehicleNo();
+  const importKey = previousTdgImportKey(sess.userId, vehicleNo);
 
   if (!force && localStorage.getItem(importKey) === today) {
     return {
@@ -2211,7 +2335,7 @@ async function importPreviousDayTdgBalanceOncePerDay({ force = false } = {}) {
 
   try {
     const balance = await fetchPreviousDayTdgBalanceFromSupabase();
-    savePreviousTdgCache(sess.userId, balance);
+    savePreviousTdgCache(sess.userId, vehicleNo, balance);
 
     if (!balance.found || balance.remainingKg == null) {
       localStorage.setItem(importKey, today);
@@ -2249,11 +2373,11 @@ async function importPreviousDayTdgBalanceOncePerDay({ force = false } = {}) {
   } catch (error) {
     console.warn("Previous-day TDG import from Supabase failed:", error);
 
-    const cached = readPreviousTdgCache(sess.userId);
-    const expectedDate = getPreviousCalendarDate();
+    const cached = readPreviousTdgCache(sess.userId, vehicleNo);
 
     if (
-      cached?.previousDate === expectedDate &&
+      cached?.targetDate === today &&
+      String(cached?.vehicleNo || "") === String(vehicleNo || "") &&
       Number.isFinite(Number(cached?.remainingKg))
     ) {
       const imported = applyPreviousDayTdgBalance(cached, {
@@ -2304,33 +2428,45 @@ async function pullTodayRecordsFromSupabase() {
 
   if (error) throw error;
 
-  const list = (data || []).map((r) => ({
-    clientRecordId: r.client_record_id,
-    driverNumber: r.driver_number,
-    driverName: r.driver_name,
-    date: r.work_date,
-    vehicleNo: r.vehicle_no,
-    weekCycle: r.week_cycle,
-    shiftStart: r.shift_start,
-    shiftFinish: r.shift_finish,
-    arrivalTime: r.arrival_time,
-    completedAt: r.completed_at,
-    accountNumber: r.account_number,
-    accountName: r.account_name,
-    accountAddress: r.account_address,
-    accountCity: r.account_city,
-    accountRoute: r.account_route,
-    tdgVolume: r.tdg_volume,
-    deliveredVolume: r.delivered_volume,
-    notes: r.notes,
-    raw: r.raw || null,
-    eventType: r.raw?.eventType || r.raw?.event_type || "",
-    reloadAmountKg: Number(
-      r.raw?.reloadAmountKg ?? r.raw?.reload_amount_kg ?? 0,
-    ) || 0,
-    synced: true,
-    remoteId: r.id,
-  }));
+  const list = (data || []).map((r) => {
+    const record = {
+      clientRecordId: r.client_record_id,
+      driverNumber: r.driver_number,
+      driverName: r.driver_name,
+      date: r.work_date,
+      vehicleNo: r.vehicle_no,
+      weekCycle: r.week_cycle,
+      shiftStart: r.shift_start,
+      shiftFinish: r.shift_finish,
+      arrivalTime: r.arrival_time,
+      completedAt: r.completed_at,
+      accountNumber: r.account_number,
+      accountName: r.account_name,
+      accountAddress: r.account_address,
+      accountCity: r.account_city,
+      accountRoute: r.account_route,
+      tdgVolume: r.tdg_volume,
+      deliveredVolume: r.delivered_volume,
+      notes: r.notes,
+      raw: window.TDG_VOLUME?.flattenRawRecord?.({
+        ...(r.raw || {}),
+        date: r.work_date,
+        vehicleNo: r.vehicle_no,
+      }) || r.raw || null,
+      synced: true,
+      remoteId: r.id,
+    };
+
+    if (window.TDG_VOLUME?.isReloadRecord?.(record)) {
+      record.eventType = "reload";
+      record.reloadAmountKg = getReloadAmountKg(record);
+    } else {
+      record.eventType = "";
+      record.reloadAmountKg = 0;
+    }
+
+    return record;
+  });
 
   localStorage.setItem(LS_RECORDS, JSON.stringify(list));
   localStorage.removeItem(LS_PENDING_SYNC);
@@ -2401,7 +2537,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("startKm")?.addEventListener("input", updateTotalKm);
   $("endKm")?.addEventListener("input", updateTotalKm);
 
-  const sess = await window.TDG_AUTH?.requireAuthAsync?.();
+  const sess = window.TDG_AUTH?.requireAuth?.();
 
   if (!sess) {
     return;
@@ -2713,6 +2849,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       scheduleSaveIndexState,
       { passive: true },
     );
+  });
+
+  $("vehicleNo")?.addEventListener("change", async () => {
+    try {
+      await importPreviousDayTdgBalanceOncePerDay({ force: true });
+    } catch (error) {
+      console.warn("Vehicle TDG balance refresh failed:", error);
+    }
   });
 
   const dateInput = $("date");
