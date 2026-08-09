@@ -9,7 +9,7 @@
  *   free-text notes alone are intentionally not enough.
  */
 (() => {
-  const RESET_DATE = "2026-08-10";
+  const RESET_DATE = "2026-08-09";
   const RESET_VEHICLES = Object.freeze(["82112", "82303"]);
   const MAX_RAW_DEPTH = 8;
 
