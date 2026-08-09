@@ -2863,7 +2863,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("startKm")?.addEventListener("input", updateTotalKm);
   $("endKm")?.addEventListener("input", updateTotalKm);
 
-  const sess = await window.TDG_AUTH?.requireAuthAsync?.();
+  const auth = window.TDG_AUTH;
+  const sess =
+    typeof auth?.requireAuthAsync === "function"
+      ? await auth.requireAuthAsync()
+      : auth?.requireAuth?.();
 
   if (!sess) {
     return;
@@ -3175,7 +3179,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       "load",
       async () => {
         try {
-          await navigator.serviceWorker.register("./sw.js");
+          await navigator.serviceWorker.register("./js/service-worker.js");
         } catch (error) {
           console.warn(
             "Service worker registration failed:",
