@@ -536,6 +536,18 @@
         return window.TDG_VOLUME?.getReloadAmountKg?.(record) || 0;
       }
 
+      function isAdjustmentRecord(record) {
+        return !!window.TDG_VOLUME?.isAdjustmentRecord?.(record);
+      }
+
+      function getAdjustmentAmountLbs(record) {
+        return window.TDG_VOLUME?.getAdjustmentAmountLbs?.(record) || 0;
+      }
+
+      function getAdjustmentReason(record) {
+        return window.TDG_VOLUME?.getAdjustmentReason?.(record) || "";
+      }
+
       function firstNonEmpty(records, getter) {
         for (const record of records) {
           const value = getter(record);
@@ -555,6 +567,9 @@
       function buildDisplayRow(record) {
         const reload = isReloadRecord(record);
         const reloadKg = getReloadAmountKg(record);
+        const adjustment = isAdjustmentRecord(record);
+        const adjustmentLbs = getAdjustmentAmountLbs(record);
+        const adjustmentReason = getAdjustmentReason(record);
 
         const customer = safe(record?.account_name);
         const address = safe(record?.account_address);
@@ -572,16 +587,25 @@
           ),
           customerLocation: reload
             ? `RELOAD — ${location || "Linde Mcphillips Plant"}`
+            : adjustment
+              ? `TDG ADJUSTMENT — ${adjustmentReason || "Adjustment"}`
             : location,
           accountNumber: safe(record?.account_number),
-          delivered: reload
+          delivered: reload || adjustment
             ? ""
             : safe(record?.delivered_volume),
           notes: reload
             ? safe(record?.notes || `TDG Reload: +${reloadKg} kg`)
+            : adjustment
+              ? safe(
+                  record?.notes ||
+                    `TDG Adjustment: -${adjustmentLbs} lbs (${adjustmentReason})`,
+                )
             : safe(record?.notes),
           reload,
           reloadKg,
+          adjustment,
+          adjustmentLbs,
           balanceLbs: "",
         };
       }
@@ -730,6 +754,8 @@
 
           if (row.reload) {
             runningKg += row.reloadKg;
+          } else if (row.adjustment) {
+            runningKg -= lbsToKg(row.adjustmentLbs);
           } else {
             runningKg -= lbsToKg(row.delivered);
           }

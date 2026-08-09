@@ -303,6 +303,13 @@
         return !!window.TDG_VOLUME?.isReloadRecord?.(record);
       }
 
+      function isNonDeliveryEvent(record) {
+        return (
+          isReloadRecord(record) ||
+          !!window.TDG_VOLUME?.isAdjustmentRecord?.(record)
+        );
+      }
+
       function toDateValue(value) {
         if (!value) return null;
         const text = String(value).trim();
@@ -592,7 +599,7 @@
            * then buildSheet() keeps the most recent MAX_ROWS records.
            */
           for (const row of allRecords) {
-            if (isReloadRecord(row)) continue;
+            if (isNonDeliveryEvent(row)) continue;
 
             const accountNumber = safe(row.account_number);
             if (!recordMap.has(accountNumber)) {

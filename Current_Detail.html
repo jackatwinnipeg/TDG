@@ -411,6 +411,12 @@
       .reload-row:hover td {
         background: rgba(0, 255, 160, 0.075);
       }
+      .adjustment-row td {
+        background: rgba(255, 180, 70, 0.055);
+      }
+      .adjustment-row:hover td {
+        background: rgba(255, 180, 70, 0.09);
+      }
 </style>
   </head>
   <body>
@@ -914,16 +920,30 @@
       function normalizeForView(r) {
         const delivered = Number(r.deliveredVolume ?? r.delivered ?? 0);
         const isReload = !!window.TDG_VOLUME?.isReloadRecord?.(r);
-        const eventType = isReload ? "reload" : "";
+        const isAdjustment =
+          !!window.TDG_VOLUME?.isAdjustmentRecord?.(r);
+        const eventType = isReload
+          ? "reload"
+          : isAdjustment
+            ? "tdg_adjustment"
+            : "";
         const reloadAmountKg = isReload
           ? window.TDG_VOLUME?.getReloadAmountKg?.(r) || 0
           : 0;
+        const adjustmentAmountLbs = isAdjustment
+          ? window.TDG_VOLUME?.getAdjustmentAmountLbs?.(r) || 0
+          : 0;
+        const adjustmentReason = isAdjustment
+          ? window.TDG_VOLUME?.getAdjustmentReason?.(r) || ""
+          : "";
 
         return {
           ...r,
           delivered,
           eventType,
           reloadAmountKg,
+          adjustmentAmountLbs,
+          adjustmentReason,
           city: safe(r.accountCity || r.city || ""),
           route: safe(r.accountRoute || r.route || r.routeType || ""),
           acct: safe(r.accountNumber || ""),
@@ -1006,22 +1026,27 @@
             const nameAddr = `<div style="font-weight:800">${escapeHtml(r.name)}</div>
                               <div class="muted" style="margin-top:6px">${escapeHtml(r.addr)}</div>`;
             const isReload = r.eventType === "reload";
+            const isAdjustment = r.eventType === "tdg_adjustment";
             const delivered = isReload
               ? `<span class="chip ok">+${escapeHtml(String(r.reloadAmountKg))} kg</span>`
+              : isAdjustment
+                ? `<span class="chip danger">-${escapeHtml(String(r.adjustmentAmountLbs))} lbs</span>`
               : escapeHtml(String(r.delivered));
             const notes = escapeHtml(
               isReload
                 ? `TDG Reload at ${r.name || "Linde Mcphillips Plant"}`
+                : isAdjustment
+                  ? `TDG Adjustment — ${r.adjustmentReason || "Adjustment"}`
                 : safe(r.notes || r.note || ""),
             );
             const city = escapeHtml(r.city);
             const route = escapeHtml(r.route);
-            const editButton = isReload
+            const editButton = isReload || isAdjustment
               ? ""
               : `<button class="btn secondary edit-record-btn" type="button" data-act="edit" data-idx="${r.__rawIndex}" aria-label="Edit delivered volume and notes"><span class="edit-icon" aria-hidden="true">✎</span>Edit</button>`;
 
             return `
-              <tr class="${isReload ? "reload-row" : ""}">
+              <tr class="${isReload ? "reload-row" : isAdjustment ? "adjustment-row" : ""}">
                 <td>${fmtTime(r)}<div class="muted" style="margin-top:6px">${escapeHtml(safe(r.shift || r.tripType || ""))}</div></td>
                 <td>${driver || "-"}</td>
                 <td>${acct || "-"}</td>

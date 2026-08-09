@@ -830,6 +830,14 @@
         return !!window.TDG_VOLUME?.isReloadRecord?.(record);
       }
 
+      function isAdjustmentRecord(record) {
+        return !!window.TDG_VOLUME?.isAdjustmentRecord?.(record);
+      }
+
+      function isNonDeliveryEvent(record) {
+        return isReloadRecord(record) || isAdjustmentRecord(record);
+      }
+
       function getCurrentBatchSource() {
         const panel = $("resultPanel");
         const hasSearchResultsOpen =
@@ -891,7 +899,7 @@
       }
 
       function recordMatchesBatchFillFilters(record, filters) {
-        if (isReloadRecord(record)) return false;
+        if (isNonDeliveryEvent(record)) return false;
 
         const accountNumber = safe(record?.accountNumber);
         if (!accountNumber) return false;
@@ -983,7 +991,7 @@
         const map = new Map();
 
         for (const record of records || []) {
-          if (isReloadRecord(record)) continue;
+          if (isNonDeliveryEvent(record)) continue;
 
           const accountNumber = safe(record?.accountNumber);
           if (!accountNumber) continue;
@@ -1159,6 +1167,7 @@
               date: workDate,
               count: 0,
               reloadCount: 0,
+              adjustmentCount: 0,
             });
           }
 
@@ -1166,6 +1175,8 @@
           entry.count += 1;
           if (isReloadRecord(record)) {
             entry.reloadCount += 1;
+          } else if (isAdjustmentRecord(record)) {
+            entry.adjustmentCount += 1;
           }
         }
 
@@ -1265,6 +1276,9 @@
             const reloadText = entry.reloadCount
               ? ` · ${entry.reloadCount} reload`
               : "";
+            const adjustmentText = entry.adjustmentCount
+              ? ` · ${entry.adjustmentCount} adjustment`
+              : "";
 
             return `
               <label class="batch-item">
@@ -1282,6 +1296,7 @@
                   <span class="batch-item-sub">
                     Driver # ${escapeHtml(entry.driverNumber || "—")}
                     ${escapeHtml(reloadText)}
+                    ${escapeHtml(adjustmentText)}
                   </span>
                 </span>
                 <span class="batch-count">
@@ -1461,6 +1476,11 @@
             const timeText = fmtDateTime(
               r.completedAt || r.arrivalTime || r.createdAt || r.date
             );
+            const volumeText = isReloadRecord(r)
+              ? `Reload: +${window.TDG_VOLUME?.getReloadAmountKg?.(r) || 0} kg`
+              : isAdjustmentRecord(r)
+                ? `TDG Adjustment: -${window.TDG_VOLUME?.getAdjustmentAmountLbs?.(r) || 0} lbs`
+                : `Delivered: ${num(r.deliveredVolume)}`;
 
             return `
               <div class="rowCard">
@@ -1498,9 +1518,7 @@
                   <span>City: ${escapeHtml(safe(r.accountCity) || "-")}</span>
                   <span>Route: ${escapeHtml(safe(r.accountRoute) || "-")}</span>
                   <span>Week: ${escapeHtml(safe(r.weekCycle) || "-")}</span>
-                  <span>Delivered: ${escapeHtml(
-                    String(num(r.deliveredVolume))
-                  )}</span>
+                  <span>${escapeHtml(volumeText)}</span>
                 </div>
 
                 <div class="muted2">

@@ -431,6 +431,18 @@
         return window.TDG_VOLUME?.getReloadAmountKg?.(record) || 0;
       }
 
+      function isAdjustmentRecord(record) {
+        return !!window.TDG_VOLUME?.isAdjustmentRecord?.(record);
+      }
+
+      function getAdjustmentAmountLbs(record) {
+        return window.TDG_VOLUME?.getAdjustmentAmountLbs?.(record) || 0;
+      }
+
+      function getAdjustmentReason(record) {
+        return window.TDG_VOLUME?.getAdjustmentReason?.(record) || "";
+      }
+
       function pad2(n) {
         return String(n).padStart(2, "0");
       }
@@ -519,6 +531,9 @@
       function buildRow(r) {
         const reload = isReloadRecord(r);
         const reloadKg = getReloadAmountKg(r);
+        const adjustment = isAdjustmentRecord(r);
+        const adjustmentLbs = getAdjustmentAmountLbs(r);
+        const adjustmentReason = getAdjustmentReason(r);
         const arrive = formatTime(
           r.arrival_time || r.arrivalTime || r.completed_at || r.completedAt || "",
         );
@@ -528,10 +543,15 @@
         const city = safe(r.account_city || r.accountCity || "");
         const route = safe(r.account_route || r.accountRoute || "");
         const acct = safe(r.account_number || r.accountNumber || "");
-        const delivered = reload
+        const delivered = reload || adjustment
           ? ""
           : safe(r.delivered_volume ?? r.deliveredVolume ?? "");
-        const notes = safe(r.notes || "");
+        const notes = adjustment
+          ? safe(
+              r.notes ||
+                `TDG Adjustment: -${adjustmentLbs} lbs (${adjustmentReason})`,
+            )
+          : safe(r.notes || "");
 
         const loc = [customer, addr, city, route].filter(Boolean).join(" / ");
 
@@ -539,6 +559,8 @@
           arrive,
           customerLocation: reload
             ? `RELOAD — ${loc || "Linde Mcphillips Plant"}`
+            : adjustment
+              ? `TDG ADJUSTMENT — ${adjustmentReason || "Adjustment"}`
             : loc,
           accountNumber: acct,
           delivered,
@@ -546,6 +568,8 @@
           notes,
           reload,
           reloadKg,
+          adjustment,
+          adjustmentLbs,
         };
       }
 
@@ -610,6 +634,8 @@
         for (let i = 0; i < rows.length; i++) {
           if (rows[i].reload) {
             running += rows[i].reloadKg;
+          } else if (rows[i].adjustment) {
+            running -= lbsToKg(rows[i].adjustmentLbs);
           } else {
             const deliveredLbs = num(rows[i].delivered);
             running -= lbsToKg(deliveredLbs);
