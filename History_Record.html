@@ -1543,8 +1543,13 @@
       });
 
       document.addEventListener("DOMContentLoaded", async () => {
-        const sess = window.TDG_AUTH?.requireAuth?.();
-        if (!sess) return;
+  const auth = window.TDG_AUTH;
+  const sess =
+    typeof auth?.requireAuthAsync === "function"
+      ? await auth.requireAuthAsync()
+      : auth?.requireAuth?.();
+
+  if (!sess) return;
 
         try {
           _all = await loadRecordsFromSupabase();
