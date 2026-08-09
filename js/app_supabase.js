@@ -295,9 +295,12 @@ function setRecords(list) {
   try {
     localStorage.setItem(LS_RECORDS, JSON.stringify(Array.isArray(list) ? list : []));
   } catch {}
+
+  refreshDisplayedTdgVolume(list);
 }
 
 const LBS_TO_KG = 0.45359237;
+const KG_TO_LBS = 1 / LBS_TO_KG;
 
 function integerPart(value) {
   const number = Number(value);
@@ -306,6 +309,10 @@ function integerPart(value) {
 
 function getReloadAmountKg(record) {
   return window.TDG_VOLUME?.getReloadAmountKg?.(record) || 0;
+}
+
+function getAdjustmentAmountLbs(record) {
+  return window.TDG_VOLUME?.getAdjustmentAmountLbs?.(record) || 0;
 }
 
 function computeRemainingTDG(baseTdgKg, records) {
@@ -317,6 +324,12 @@ function computeRemainingTDG(baseTdgKg, records) {
     0,
   );
 
+  const totalAdjustmentLbs = list.reduce(
+    (sum, record) => sum + getAdjustmentAmountLbs(record),
+    0,
+  );
+  const totalAdjustmentKg = totalAdjustmentLbs * LBS_TO_KG;
+
   const totalDeliveredLbs = list.reduce(
     (sum, record) =>
       sum +
@@ -325,18 +338,90 @@ function computeRemainingTDG(baseTdgKg, records) {
   );
 
   const totalDeliveredKg = totalDeliveredLbs * LBS_TO_KG;
-  const remainingKg = integerPart(baseKg + totalReloadKg - totalDeliveredKg);
+  const remainingExactKg =
+    baseKg + totalReloadKg - totalDeliveredKg - totalAdjustmentKg;
+  const remainingKg = integerPart(remainingExactKg);
+  const remainingLbs = remainingExactKg * KG_TO_LBS;
 
   return {
     base: baseKg,
     baseKg,
     totalReloadKg,
+    totalAdjustmentLbs,
+    totalAdjustmentKg,
     totalDelivered: totalDeliveredLbs,
     totalDeliveredLbs,
     totalDeliveredKg,
     remaining: remainingKg,
     remainingKg,
+    remainingExactKg,
+    remainingLbs,
   };
+}
+
+function getStartingTdgVolumeKg() {
+  const value = Number($("tdgStartVolume")?.value);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function setStartingTdgVolumeKg(value) {
+  const number = Number(value);
+  const normalized = Number.isFinite(number) ? number : 0;
+  const input = $("tdgStartVolume");
+
+  if (input) {
+    input.value = String(normalized);
+  }
+
+  return normalized;
+}
+
+function getRecordsForCurrentTdgContext(records = getRecords()) {
+  const selectedDate = $("date")?.value || tdgLocalDate();
+  const selectedVehicle =
+    window.TDG_VOLUME?.normalizeVehicleNo?.($("vehicleNo")?.value) ||
+    String($("vehicleNo")?.value || "").trim();
+
+  return (Array.isArray(records) ? records : []).filter((record) => {
+    const recordDate =
+      window.TDG_VOLUME?.getWorkDate?.(record) ||
+      String(record?.date || record?.work_date || "").trim();
+    const recordVehicle =
+      window.TDG_VOLUME?.getVehicleNo?.(record) ||
+      String(record?.vehicleNo || record?.vehicle_no || "").trim();
+
+    if (recordDate && recordDate !== selectedDate) return false;
+    if (selectedVehicle && recordVehicle && recordVehicle !== selectedVehicle) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+function computeCurrentTdgBalance(records = getRecords()) {
+  return computeRemainingTDG(
+    getStartingTdgVolumeKg(),
+    getRecordsForCurrentTdgContext(records),
+  );
+}
+
+function refreshDisplayedTdgVolume(records = getRecords()) {
+  const input = $("tdgVolume");
+  if (!input) return null;
+
+  const balance = computeCurrentTdgBalance(records);
+  input.value = String(balance.remainingKg);
+  input.dataset.startingKg = String(balance.baseTdgKg);
+  input.dataset.reloadKg = String(balance.totalReloadKg);
+  input.dataset.deliveredLbs = String(balance.totalDeliveredLbs);
+  input.dataset.adjustmentLbs = String(balance.totalAdjustmentLbs);
+  input.title =
+    `Start ${balance.baseTdgKg} kg + Reload ${balance.totalReloadKg} kg ` +
+    `− Delivered ${balance.totalDeliveredLbs} lbs ` +
+    `− Adjustment ${balance.totalAdjustmentLbs} lbs = ${balance.remainingKg} kg`;
+
+  return balance;
 }
 
 // ---------------------------
@@ -416,6 +501,9 @@ function searchCustomers(q) {
 // ---------------------------
 function getFormData() {
   const sess = getAuthSessionSafe();
+  const startingTdgVolume = getStartingTdgVolumeKg();
+  const currentTdgBalance = computeCurrentTdgBalance();
+
   return {
     driverNumber: sess?.driverNumber || sess?.username || $("driverNumber")?.value.trim() || "",
     driverName: sess?.displayName || sess?.username || $("driverName")?.value.trim() || "",
@@ -424,7 +512,10 @@ function getFormData() {
     startKm: Number($("startKm")?.value || 0),
     endKm: Number($("endKm")?.value || 0),
     totalKm: Number($("totalKm")?.value || 0),
-    tdgVolume: Number($("tdgVolume")?.value || 0),
+    // Keep the database calculation baseline separate from the live display.
+    tdgVolume: startingTdgVolume,
+    tdgStartVolume: startingTdgVolume,
+    currentTdgVolume: currentTdgBalance.remainingKg,
     weekCycle: Number($("weekCycle")?.value || 1),
     shiftTimeStart: shiftStart,
     shiftTimeFinish: shiftFinish,
@@ -450,7 +541,16 @@ function setFormData(d) {
   if ($("startKm")) $("startKm").value = d.startKm ?? "";
   if ($("endKm")) $("endKm").value = d.endKm ?? "";
   if ($("totalKm")) $("totalKm").value = d.totalKm ?? "";
-  if ($("tdgVolume")) $("tdgVolume").value = d.tdgVolume ?? "";
+  const hasStartingTdgValue =
+    d.tdgStartVolume !== undefined ||
+    d.startingTdgVolume !== undefined ||
+    d.tdgVolume !== undefined;
+
+  if (hasStartingTdgValue) {
+    setStartingTdgVolumeKg(
+      d.tdgStartVolume ?? d.startingTdgVolume ?? d.tdgVolume,
+    );
+  }
   if ($("weekCycle")) $("weekCycle").value = String(d.weekCycle || 1);
   if ($("accountNumber")) $("accountNumber").value = d.accountNumber || "";
   if ($("accountName")) $("accountName").value = d.accountName || "";
@@ -469,6 +569,7 @@ function setFormData(d) {
   renderArrivalUI();
 
   setPill("donePill", !!d.done);
+  refreshDisplayedTdgVolume();
   saveIndexState();
 }
 
@@ -725,6 +826,9 @@ async function loadFromProfile() {
       $("vehicleNo").value = profile?.vehicleNo || "";
     }
 
+    await importPreviousDayTdgBalanceOncePerDay({ force: true });
+    refreshDisplayedTdgVolume();
+
     toast("已带入", "已从用户资料带入司机/车辆信息。");
   } catch (e) {
     console.warn("loadFromProfile failed:", e);
@@ -747,6 +851,7 @@ function loadFromCalendar() {
     if ($("accountName")) $("accountName").value = planned.accountName;
     if ($("accountAddress")) $("accountAddress").value = planned.accountAddress;
   }
+  refreshDisplayedTdgVolume();
   toast("已带入", "已从日历带入日期 + 计划客户（演示）。");
   saveIndexState();
 }
@@ -762,6 +867,8 @@ function loadFromYesterday() {
   try {
     setFormData({
       ...y,
+      tdgStartVolume:
+        y.remainingVolume ?? y.currentTdgVolume ?? y.tdgStartVolume ?? y.tdgVolume,
       deliveredVolume: "",
       notes: "",
       done: false,
@@ -779,9 +886,10 @@ function autoLoadVolumeFromYesterday() {
   const y = loadYesterdayForDriver(driverKey);
   if (!y) return;
 
-  const cur = Number($("tdgVolume")?.value || 0);
+  const cur = getStartingTdgVolumeKg();
   if (!cur && y.remainingVolume != null) {
-    $("tdgVolume").value = y.remainingVolume;
+    setStartingTdgVolumeKg(y.remainingVolume);
+    refreshDisplayedTdgVolume();
     toast("已带入", "TDG Volume 已自动带入前一天余数。");
   }
 }
@@ -901,8 +1009,7 @@ function enqueuePendingSync(payload, errorMsg) {
 function buildDailyPayload(reason) {
   const form = getFormData();
   const records = getRecords();
-  const baseTdg = Number($("tdgVolume")?.value || 0);
-  const cal = computeRemainingTDG(baseTdg, records);
+  const cal = computeCurrentTdgBalance(records);
   const sess = getAuthSessionSafe();
 
   return {
@@ -923,6 +1030,8 @@ function buildDailyPayload(reason) {
     tdg: {
       base: cal.base,
       totalReloadKg: cal.totalReloadKg,
+      totalAdjustmentLbs: cal.totalAdjustmentLbs,
+      totalAdjustmentKg: cal.totalAdjustmentKg,
       totalDelivered: cal.totalDelivered,
       remaining: cal.remaining,
     },
@@ -1286,6 +1395,12 @@ async function remoteBackupFlow() {
 // ---------------------------
 const RELOAD_ACCOUNT_NUMBER = "003";
 const RELOAD_DEFAULT_NAME = "Linde Mcphillips Plant";
+const ADJUSTMENT_ACCOUNT_NUMBER = "TDG-ADJ";
+const ADJUSTMENT_ACCOUNT_NAME = "TDG Adjustment";
+const ADJUSTMENT_REASONS = new Set([
+  "Maintenance Venting",
+  "DOT Using",
+]);
 
 function setReloadError(message = "") {
   const el = $("reloadError");
@@ -1374,7 +1489,7 @@ async function saveReloadEvent() {
   const workDate = $("date")?.value || tdgLocalDate();
   const vehicleNo = $("vehicleNo")?.value?.trim() || sess.vehicleNo || "";
   const weekCycle = Number($("weekCycle")?.value || 1);
-  const baseTdgKg = Number($("tdgVolume")?.value || 0);
+  const baseTdgKg = getStartingTdgVolumeKg();
 
   window.__savingReload = true;
   if (button) {
@@ -1431,7 +1546,7 @@ async function saveReloadEvent() {
     saveIndexState();
     closeReloadModal();
 
-    const balance = computeRemainingTDG(baseTdgKg, records);
+    const balance = computeCurrentTdgBalance(records);
     toast(
       "Reload 已保存",
       `已添加 ${amountKg} kg。当前计算余量：${balance.remainingKg} kg。`,
@@ -1444,6 +1559,195 @@ async function saveReloadEvent() {
     if (button) {
       button.disabled = false;
       button.textContent = "Confirm Reload";
+    }
+  }
+}
+
+// ---------------------------
+// TDG Adjustment event
+// ---------------------------
+function setTdgAdjustmentError(message = "") {
+  const element = $("tdgAdjustmentError");
+  if (element) element.textContent = String(message || "");
+}
+
+function formatAdjustmentNumber(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "0";
+  return number.toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1");
+}
+
+function openTdgAdjustmentModal() {
+  const modal = $("tdgAdjustmentModal");
+  if (!modal) return;
+
+  const balance = computeCurrentTdgBalance();
+  const currentLbs = Math.max(0, Number(balance.remainingLbs) || 0);
+  const currentKg = Math.max(0, Number(balance.remainingExactKg) || 0);
+
+  setTdgAdjustmentError("");
+
+  if (!(currentLbs > 0)) {
+    toast("No TDG to adjust", "The current TDG balance is already 0.");
+    return;
+  }
+
+  if ($("tdgAdjustmentCurrentBalance")) {
+    $("tdgAdjustmentCurrentBalance").textContent =
+      `${formatAdjustmentNumber(currentLbs)} lbs ` +
+      `(${formatAdjustmentNumber(currentKg)} kg)`;
+  }
+
+  if ($("tdgAdjustmentAmountLbs")) {
+    $("tdgAdjustmentAmountLbs").value = currentLbs.toFixed(2);
+  }
+
+  if ($("tdgAdjustmentReason")) {
+    $("tdgAdjustmentReason").value = "Maintenance Venting";
+  }
+
+  modal.hidden = false;
+  modal.setAttribute("aria-hidden", "false");
+  document.body.style.overflow = "hidden";
+
+  requestAnimationFrame(() => {
+    $("tdgAdjustmentAmountLbs")?.focus();
+    $("tdgAdjustmentAmountLbs")?.select();
+  });
+}
+
+function closeTdgAdjustmentModal() {
+  const modal = $("tdgAdjustmentModal");
+  if (!modal) return;
+
+  modal.hidden = true;
+  modal.setAttribute("aria-hidden", "true");
+  document.body.style.overflow = "";
+  setTdgAdjustmentError("");
+}
+
+async function saveTdgAdjustmentEvent() {
+  if (window.__savingTdgAdjustment) return;
+
+  const button = $("btnTdgAdjustmentConfirm");
+  const requestedLbs = Number($("tdgAdjustmentAmountLbs")?.value);
+  const reason = String($("tdgAdjustmentReason")?.value || "").trim();
+  const balance = computeCurrentTdgBalance();
+  const currentLbs = Math.max(0, Number(balance.remainingLbs) || 0);
+  const fullBalanceToleranceLbs = 0.02;
+
+  setTdgAdjustmentError("");
+
+  if (!(requestedLbs > 0)) {
+    setTdgAdjustmentError("Amount to Reduce must be greater than 0 lbs.");
+    $("tdgAdjustmentAmountLbs")?.focus();
+    return;
+  }
+
+  if (!ADJUSTMENT_REASONS.has(reason)) {
+    setTdgAdjustmentError("Please select a valid adjustment reason.");
+    $("tdgAdjustmentReason")?.focus();
+    return;
+  }
+
+  if (!(currentLbs > 0)) {
+    setTdgAdjustmentError("The current TDG balance is already 0.");
+    return;
+  }
+
+  if (requestedLbs > currentLbs + fullBalanceToleranceLbs) {
+    setTdgAdjustmentError(
+      `The reduction cannot exceed the current balance of ` +
+        `${formatAdjustmentNumber(currentLbs)} lbs.`,
+    );
+    $("tdgAdjustmentAmountLbs")?.focus();
+    return;
+  }
+
+  const amountLbs =
+    Math.abs(requestedLbs - currentLbs) <= fullBalanceToleranceLbs
+      ? currentLbs
+      : requestedLbs;
+
+  const sess = getAuthSessionSafe();
+  if (!sess?.userId) {
+    setTdgAdjustmentError("Your login session has expired. Please sign in again.");
+    return;
+  }
+
+  const completedAt = tdgLocalDateTimeISO();
+  const event = {
+    eventType: "tdg_adjustment",
+    adjustmentAmountLbs: amountLbs,
+    adjustmentReason: reason,
+    clientRecordId: genClientRecordId(),
+    driverNumber: sess.driverNumber || sess.username || "",
+    driverName: sess.displayName || sess.username || "",
+    date: $("date")?.value || tdgLocalDate(),
+    vehicleNo: $("vehicleNo")?.value?.trim() || sess.vehicleNo || "",
+    weekCycle: Number($("weekCycle")?.value || 1),
+    shiftStart: shiftStart || "",
+    shiftFinish: shiftFinish || "",
+    arrived: true,
+    arrivalTime: nowHHMM(),
+    completedAt,
+    accountNumber: ADJUSTMENT_ACCOUNT_NUMBER,
+    accountName: ADJUSTMENT_ACCOUNT_NAME,
+    accountAddress: "",
+    accountCity: "",
+    accountRoute: "",
+    tdgVolume: getStartingTdgVolumeKg(),
+    deliveredVolume: 0,
+    notes:
+      `TDG Adjustment: -${formatAdjustmentNumber(amountLbs)} lbs ` +
+      `(${reason})`,
+    done: true,
+    updatedAt: completedAt,
+  };
+
+  window.__savingTdgAdjustment = true;
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Saving...";
+  }
+
+  try {
+    const remoteRow = await syncRecordToSupabase(event);
+    const records = getRecords();
+
+    records.push({
+      ...event,
+      raw: {
+        ...event,
+        eventType: "tdg_adjustment",
+        adjustmentAmountLbs: amountLbs,
+        adjustmentReason: reason,
+      },
+      synced: true,
+      syncError: "",
+      remoteId: remoteRow?.id || null,
+    });
+
+    setRecords(records);
+    saveIndexState();
+    closeTdgAdjustmentModal();
+
+    const updatedBalance = computeCurrentTdgBalance(records);
+    toast(
+      "TDG Adjustment saved",
+      `${formatAdjustmentNumber(amountLbs)} lbs · ${reason}. ` +
+        `Current balance: ${updatedBalance.remainingKg} kg.`,
+    );
+  } catch (error) {
+    console.error("Save TDG Adjustment failed:", error);
+    setTdgAdjustmentError(
+      error?.message || "TDG Adjustment could not be saved. Please try again.",
+    );
+  } finally {
+    window.__savingTdgAdjustment = false;
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Confirm Adjustment";
     }
   }
 }
@@ -1840,8 +2144,7 @@ async function checkOut() {
 function saveDraft() {
   const d = getFormData();
   const records = getRecords();
-  const baseTdg = Number($("tdgVolume")?.value || 0);
-  const cal = computeRemainingTDG(baseTdg, records);
+  const cal = computeCurrentTdgBalance(records);
   d.remainingVolume = cal.remaining;
 
   localStorage.setItem(LS_DRAFT, JSON.stringify(d));
@@ -1885,9 +2188,8 @@ async function done() {
     d.completedAt = tdgLocalDateTimeISO();
     d.clientRecordId = d.clientRecordId || genClientRecordId();
 
-    const baseTdg = Number($("tdgVolume")?.value || 0);
     const recordsIncludingCurrent = [...getRecords(), d];
-    const cal = computeRemainingTDG(baseTdg, recordsIncludingCurrent);
+    const cal = computeCurrentTdgBalance(recordsIncludingCurrent);
     d.remainingVolume = cal.remaining;
 
     toast("上传中", "正在立即上传本条记录到 Supabase...");
@@ -2033,6 +2335,7 @@ function scheduleSaveIndexState() {
 
 window.addEventListener("pageshow", () => {
   restoreIndexState();
+  refreshDisplayedTdgVolume();
 });
 
 /* ===============================
@@ -2113,13 +2416,21 @@ function buildTdgBalanceResult({
     (sum, row) => sum + getReloadAmountKg(row),
     0,
   );
+  const totalAdjustmentLbs = list.reduce(
+    (sum, row) => sum + getAdjustmentAmountLbs(row),
+    0,
+  );
+  const totalAdjustmentKg = totalAdjustmentLbs * LBS_TO_KG;
   const totalDeliveredLbs = list.reduce(
     (sum, row) => sum + (Number(row?.delivered_volume) || 0),
     0,
   );
   const totalDeliveredKg = totalDeliveredLbs * LBS_TO_KG;
   const remainingKg = integerPart(
-    Number(baseTdgKg || 0) + totalReloadKg - totalDeliveredKg,
+    Number(baseTdgKg || 0) +
+      totalReloadKg -
+      totalDeliveredKg -
+      totalAdjustmentKg,
   );
 
   return {
@@ -2132,6 +2443,8 @@ function buildTdgBalanceResult({
     recordCount: list.length,
     baseTdgKg: Number(baseTdgKg || 0),
     totalReloadKg,
+    totalAdjustmentLbs,
+    totalAdjustmentKg,
     totalDeliveredLbs,
     totalDeliveredKg,
     remainingKg,
@@ -2255,6 +2568,8 @@ async function fetchPreviousDayTdgBalanceFromSupabase() {
       recordCount: rows.length,
       baseTdgKg: 0,
       totalReloadKg: 0,
+      totalAdjustmentLbs: 0,
+      totalAdjustmentKg: 0,
       totalDeliveredLbs: 0,
       totalDeliveredKg: 0,
       remainingKg: null,
@@ -2278,19 +2593,19 @@ function applyPreviousDayTdgBalance(
   balance,
   { force = false, showMessage = true } = {},
 ) {
-  const input = $("tdgVolume");
-  if (!input) return false;
+  if (!$("tdgVolume") || !$("tdgStartVolume")) return false;
 
   const remainingKg = Number(balance?.remainingKg);
   if (!Number.isFinite(remainingKg)) return false;
 
-  const currentKg = Number(input.value || 0);
+  const currentKg = getStartingTdgVolumeKg();
   if (!force && currentKg !== 0) {
-    console.log("TDG Volume already contains a value; import skipped.");
+    console.log("Starting TDG Volume already contains a value; import skipped.");
     return false;
   }
 
-  input.value = String(integerPart(remainingKg));
+  setStartingTdgVolumeKg(integerPart(remainingKg));
+  refreshDisplayedTdgVolume();
   saveIndexState();
 
   if (showMessage) {
@@ -2308,7 +2623,8 @@ function applyPreviousDayTdgBalance(
         `${balance.totalReloadKg || 0} kg Reload - ` +
         `${balance.totalDeliveredLbs} lbs (${integerPart(
           balance.totalDeliveredKg,
-        )} kg) = ${integerPart(remainingKg)} kg`,
+        )} kg) - ${balance.totalAdjustmentLbs || 0} lbs Adjustment = ` +
+        `${integerPart(remainingKg)} kg`,
     );
   }
 
@@ -2460,15 +2776,25 @@ async function pullTodayRecordsFromSupabase() {
     if (window.TDG_VOLUME?.isReloadRecord?.(record)) {
       record.eventType = "reload";
       record.reloadAmountKg = getReloadAmountKg(record);
+      record.adjustmentAmountLbs = 0;
+      record.adjustmentReason = "";
+    } else if (window.TDG_VOLUME?.isAdjustmentRecord?.(record)) {
+      record.eventType = "tdg_adjustment";
+      record.reloadAmountKg = 0;
+      record.adjustmentAmountLbs = getAdjustmentAmountLbs(record);
+      record.adjustmentReason =
+        window.TDG_VOLUME?.getAdjustmentReason?.(record) || "";
     } else {
       record.eventType = "";
       record.reloadAmountKg = 0;
+      record.adjustmentAmountLbs = 0;
+      record.adjustmentReason = "";
     }
 
     return record;
   });
 
-  localStorage.setItem(LS_RECORDS, JSON.stringify(list));
+  setRecords(list);
   localStorage.removeItem(LS_PENDING_SYNC);
 
   return list;
@@ -2679,6 +3005,42 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("btnReloadCancel")?.addEventListener("click", closeReloadModal);
   $("btnReloadConfirm")?.addEventListener("click", saveReloadEvent);
 
+  $("btnTdgAdjustment")?.addEventListener(
+    "click",
+    openTdgAdjustmentModal,
+  );
+  $("btnTdgAdjustmentClose")?.addEventListener(
+    "click",
+    closeTdgAdjustmentModal,
+  );
+  $("btnTdgAdjustmentCancel")?.addEventListener(
+    "click",
+    closeTdgAdjustmentModal,
+  );
+  $("btnTdgAdjustmentConfirm")?.addEventListener(
+    "click",
+    saveTdgAdjustmentEvent,
+  );
+
+  $("tdgAdjustmentModal")?.addEventListener(
+    "click",
+    (event) => {
+      if (event.target === $("tdgAdjustmentModal")) {
+        closeTdgAdjustmentModal();
+      }
+    },
+  );
+
+  $("tdgAdjustmentAmountLbs")?.addEventListener(
+    "keydown",
+    (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        saveTdgAdjustmentEvent();
+      }
+    },
+  );
+
   $("reloadModal")?.addEventListener(
     "click",
     (event) => {
@@ -2701,6 +3063,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.addEventListener(
     "keydown",
     (event) => {
+      if (
+        event.key === "Escape" &&
+        !$("tdgAdjustmentModal")?.hidden
+      ) {
+        closeTdgAdjustmentModal();
+        return;
+      }
+
       if (
         event.key === "Escape" &&
         !$("reloadModal")?.hidden
@@ -2856,6 +3226,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       await importPreviousDayTdgBalanceOncePerDay({ force: true });
     } catch (error) {
       console.warn("Vehicle TDG balance refresh failed:", error);
+    } finally {
+      refreshDisplayedTdgVolume();
     }
   });
 
@@ -2875,6 +3247,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         workDate: dateInput.value || tdgLocalDate(),
         silent: true,
       });
+      refreshDisplayedTdgVolume();
     },
   );
 
@@ -2927,6 +3300,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     );
   }
 
+  refreshDisplayedTdgVolume();
   saveIndexState();
 
   console.log(
@@ -2934,8 +3308,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     {
       restored,
       draftRestored,
-      tdgVolume:
-        Number($("tdgVolume")?.value || 0),
+      startingTdgVolume: getStartingTdgVolumeKg(),
+      currentTdgVolume: Number($("tdgVolume")?.value || 0),
     },
   );
 });

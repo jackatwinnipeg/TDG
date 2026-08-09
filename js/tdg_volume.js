@@ -78,6 +78,13 @@
     return isOnOrAfterReset(record) && getEventType(record) === "reload";
   }
 
+  function isAdjustmentRecord(record) {
+    return (
+      isOnOrAfterReset(record) &&
+      ["tdg_adjustment", "adjustment"].includes(getEventType(record))
+    );
+  }
+
   function getReloadAmountKg(record) {
     if (!isReloadRecord(record)) return 0;
 
@@ -86,6 +93,30 @@
     );
 
     return Number.isFinite(amount) && amount > 0 ? amount : 0;
+  }
+
+  function getAdjustmentAmountLbs(record) {
+    if (!isAdjustmentRecord(record)) return 0;
+
+    const amount = Number(
+      firstDefined(record, [
+        "adjustmentAmountLbs",
+        "adjustment_amount_lbs",
+      ]),
+    );
+
+    return Number.isFinite(amount) && amount > 0 ? amount : 0;
+  }
+
+  function getAdjustmentReason(record) {
+    if (!isAdjustmentRecord(record)) return "";
+    return safe(
+      firstDefined(record, ["adjustmentReason", "adjustment_reason"]),
+    );
+  }
+
+  function isNonDeliveryEvent(record) {
+    return isReloadRecord(record) || isAdjustmentRecord(record);
   }
 
   function getTdgStartKg(record) {
@@ -128,6 +159,12 @@
       flattened.reloadAmountKg = reloadAmountKg;
     }
 
+    const adjustmentAmountLbs = getAdjustmentAmountLbs(record);
+    if (adjustmentAmountLbs > 0) {
+      flattened.adjustmentAmountLbs = adjustmentAmountLbs;
+      flattened.adjustmentReason = getAdjustmentReason(record);
+    }
+
     return flattened;
   }
 
@@ -142,6 +179,10 @@
     getEventType,
     isReloadRecord,
     getReloadAmountKg,
+    isAdjustmentRecord,
+    getAdjustmentAmountLbs,
+    getAdjustmentReason,
+    isNonDeliveryEvent,
     getTdgStartKg,
     flattenRawRecord,
   });
