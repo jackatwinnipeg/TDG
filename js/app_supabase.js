@@ -1582,8 +1582,8 @@ function openTdgAdjustmentModal() {
   if (!modal) return;
 
   const balance = computeCurrentTdgBalance();
-  const currentLbs = Math.max(0, Number(balance.remainingLbs) || 0);
-  const currentKg = Math.max(0, Number(balance.remainingExactKg) || 0);
+  const currentLbs = Math.max(0, integerPart(balance.remainingLbs));
+  const currentKg = Math.max(0, integerPart(balance.remainingExactKg));
 
   setTdgAdjustmentError("");
 
@@ -1593,14 +1593,13 @@ function openTdgAdjustmentModal() {
   }
 
   if ($("tdgAdjustmentCurrentBalance")) {
-    $("tdgAdjustmentCurrentBalance").textContent =
-      `${formatAdjustmentNumber(currentLbs)} lbs ` +
-      `(${formatAdjustmentNumber(currentKg)} kg)`;
-  }
+  $("tdgAdjustmentCurrentBalance").textContent =
+    `${currentLbs} lbs (${currentKg} kg)`;
+}
 
-  if ($("tdgAdjustmentAmountLbs")) {
-    $("tdgAdjustmentAmountLbs").value = currentLbs.toFixed(2);
-  }
+if ($("tdgAdjustmentAmountLbs")) {
+  $("tdgAdjustmentAmountLbs").value = String(currentLbs);
+}
 
   if ($("tdgAdjustmentReason")) {
     $("tdgAdjustmentReason").value = "Maintenance Venting";
