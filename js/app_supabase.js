@@ -143,7 +143,7 @@ const LS_DRAFT = "tdg_draft_v3";
 const LS_CYCLE = "tdg_week_cycle_v3";
 const LS_RECORDS = "tdg_records_v3";
 const LS_PENDING_SYNC = "tdg_pending_sync_v1";
-const TDG_RESET_DATE = window.TDG_VOLUME?.RESET_DATE || "2026-08-10";
+const TDG_RESET_DATE = window.TDG_VOLUME?.RESET_DATE || "2026-08-09";
 
 // ---------------------------
 // Per-driver Yesterday
