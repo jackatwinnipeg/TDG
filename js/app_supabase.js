@@ -2863,7 +2863,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("startKm")?.addEventListener("input", updateTotalKm);
   $("endKm")?.addEventListener("input", updateTotalKm);
 
-  const sess = window.TDG_AUTH?.requireAuth?.();
+  const sess = await window.TDG_AUTH?.requireAuthAsync?.();
 
   if (!sess) {
     return;
