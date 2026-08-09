@@ -384,10 +384,11 @@
       </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="./js/supabaseConfig.js"></script>
     <script src="./js/supabaseClient.js"></script>
     <script src="./js/auth_supabase.js"></script>
+    <script src="./js/tdg_volume.js"></script>
 
     <script>
       const KG_TO_LBS = 2.20462;
@@ -420,6 +421,14 @@
         const m = s.match(/-?\d+(?:\.\d+)?/);
         const n = m ? Number(m[0]) : Number(s);
         return Number.isFinite(n) ? n : 0;
+      }
+
+      function isReloadRecord(record) {
+        return !!window.TDG_VOLUME?.isReloadRecord?.(record);
+      }
+
+      function getReloadAmountKg(record) {
+        return window.TDG_VOLUME?.getReloadAmountKg?.(record) || 0;
       }
 
       function pad2(n) {
@@ -508,6 +517,8 @@
       }
 
       function buildRow(r) {
+        const reload = isReloadRecord(r);
+        const reloadKg = getReloadAmountKg(r);
         const arrive = formatTime(
           r.arrival_time || r.arrivalTime || r.completed_at || r.completedAt || "",
         );
@@ -517,18 +528,24 @@
         const city = safe(r.account_city || r.accountCity || "");
         const route = safe(r.account_route || r.accountRoute || "");
         const acct = safe(r.account_number || r.accountNumber || "");
-        const delivered = safe(r.delivered_volume ?? r.deliveredVolume ?? "");
+        const delivered = reload
+          ? ""
+          : safe(r.delivered_volume ?? r.deliveredVolume ?? "");
         const notes = safe(r.notes || "");
 
         const loc = [customer, addr, city, route].filter(Boolean).join(" / ");
 
         return {
           arrive,
-          customerLocation: loc,
+          customerLocation: reload
+            ? `RELOAD — ${loc || "Linde Mcphillips Plant"}`
+            : loc,
           accountNumber: acct,
           delivered,
           balance: "",
           notes,
+          reload,
+          reloadKg,
         };
       }
 
@@ -591,8 +608,12 @@
         let running = num(first.tdg_volume ?? first.raw?.tdgVolume ?? first.raw?.tdgStartVolume ?? 0);
 
         for (let i = 0; i < rows.length; i++) {
-          const deliveredLbs = num(rows[i].delivered);
-          running -= lbsToKg(deliveredLbs);
+          if (rows[i].reload) {
+            running += rows[i].reloadKg;
+          } else {
+            const deliveredLbs = num(rows[i].delivered);
+            running -= lbsToKg(deliveredLbs);
+          }
           const balanceLbs = Math.round(kgToLbs(running));
           rows[i].balance = String(balanceLbs);
         }
@@ -663,9 +684,6 @@
       }
 
       async function fill() {
-        const sess = await window.TDG_AUTH?.requireAuthAsync?.();
-        if (!sess) return;
-
         const date = getQueryDate();
         const tbody = document.getElementById("tbody");
 
@@ -682,6 +700,9 @@
         }
 
         try {
+          const sess = window.TDG_AUTH?.requireAuth?.();
+          if (!sess) return;
+
           const records = await loadByDate(date);
 
           if (!records.length) {

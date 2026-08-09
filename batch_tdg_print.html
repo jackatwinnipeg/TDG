@@ -405,10 +405,11 @@
 </div>
     </template>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="./js/supabaseConfig.js"></script>
     <script src="./js/supabaseClient.js"></script>
     <script src="./js/auth_supabase.js"></script>
+    <script src="./js/tdg_volume.js"></script>
     <script>
       const LS_BATCH_TDG_SELECTION = "tdg_batch_tdg_selection_v1";
       const LBS_TO_KG = 0.45359237;
@@ -528,38 +529,11 @@
       }
 
       function isReloadRecord(record) {
-        const eventType = safe(
-          record?.raw?.eventType ||
-          record?.raw?.event_type ||
-          ""
-        ).toLowerCase();
-
-        if (eventType === "reload") return true;
-
-        return (
-          safe(record?.account_number) === "003" &&
-          safe(record?.notes).toLowerCase().startsWith("tdg reload")
-        );
+        return !!window.TDG_VOLUME?.isReloadRecord?.(record);
       }
 
       function getReloadAmountKg(record) {
-        if (!isReloadRecord(record)) return 0;
-
-        const direct = Number(
-          record?.raw?.reloadAmountKg ??
-          record?.raw?.reload_amount_kg
-        );
-
-        if (Number.isFinite(direct) && direct > 0) {
-          return direct;
-        }
-
-        const notes = safe(record?.notes);
-        const match = notes.match(/reload\s*:\s*\+?([\d,.]+)\s*kg/i);
-        if (!match) return 0;
-
-        const parsed = Number(match[1].replace(/,/g, ""));
-        return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+        return window.TDG_VOLUME?.getReloadAmountKg?.(record) || 0;
       }
 
       function firstNonEmpty(records, getter) {
@@ -853,7 +827,7 @@
       }
 
       async function init() {
-        const sess = await window.TDG_AUTH?.requireAuthAsync?.();
+        const sess = window.TDG_AUTH?.requireAuth?.();
         if (!sess) return;
 
         const groups = readSelection()

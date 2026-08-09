@@ -205,6 +205,7 @@
     <script src="./js/supabaseConfig.js"></script>
     <script src="./js/supabaseClient.js"></script>
     <script src="./js/auth_supabase.js"></script>
+    <script src="./js/tdg_volume.js"></script>
     <script>
       const LS_BATCH_FILL_SELECTION = "tdg_batch_fill_selection_v1";
       const MAX_ROWS = 14;
@@ -299,18 +300,7 @@
       }
 
       function isReloadRecord(record) {
-        const eventType = safe(
-          record?.raw?.eventType ||
-          record?.raw?.event_type ||
-          ""
-        ).toLowerCase();
-
-        if (eventType === "reload") return true;
-
-        return (
-          safe(record?.account_number) === "003" &&
-          safe(record?.notes).toLowerCase().startsWith("tdg reload")
-        );
+        return !!window.TDG_VOLUME?.isReloadRecord?.(record);
       }
 
       function toDateValue(value) {
@@ -469,8 +459,7 @@
 
         const sortedRows = [...records]
           .sort((a, b) => getSortTime(b) - getSortTime(a))
-          .slice(0, MAX_ROWS)
-          .reverse();
+          .slice(0, MAX_ROWS);
 
         const bodyRows = [];
 
@@ -558,7 +547,7 @@
       }
 
       async function init() {
-        const sess = await window.TDG_AUTH?.requireAuthAsync?.();
+        const sess = window.TDG_AUTH?.requireAuth?.();
         if (!sess) return;
 
         const selection = readSelection();

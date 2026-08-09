@@ -215,7 +215,7 @@
                 <input id="vehicleNo" autocomplete="off" inputmode="text" />
               </div>
               <div>
-                <label for="tdgVolume">TDG Volume (kg)</label>
+                <label for="tdgVolume">Starting TDG Volume (kg)</label>
                 <div class="tdg-volume-actions">
                   <input
                     id="tdgVolume"
@@ -227,6 +227,9 @@
                   <button class="btn ok" id="btnReload" type="button">
                     + Reload
                   </button>
+                </div>
+                <div class="help" style="margin-top:6px">
+                  Start-of-day amount only. Add replenishment with Reload.
                 </div>
               </div>
             </div>
@@ -568,12 +571,12 @@
       <strong id="toastTitle"></strong>
       <p id="toastMsg"></p>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="./js/supabaseConfig.js"></script>
     <script src="./js/supabaseClient.js"></script>
 
     <script src="./js/auth_supabase.js"></script>
-    <script src="./js/tdg_sync.js"></script>
+    <script src="./js/tdg_volume.js"></script>
     <script src="./js/app_supabase.js"></script>
   </body>
 </html>

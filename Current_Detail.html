@@ -564,10 +564,11 @@
       </section>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="./js/supabaseConfig.js"></script>
     <script src="./js/supabaseClient.js"></script>
     <script src="./js/auth_supabase.js"></script>
+    <script src="./js/tdg_volume.js"></script>
     <script>
       function toLocalDateObj(v) {
         if (!v) return null;
@@ -912,17 +913,11 @@
 
       function normalizeForView(r) {
         const delivered = Number(r.deliveredVolume ?? r.delivered ?? 0);
-        const raw = r?.raw && typeof r.raw === "object" ? r.raw : {};
-        const eventType = lower(
-          r?.eventType ?? raw?.eventType ?? raw?.event_type ?? "",
-        );
-        const reloadAmountKg =
-          Number(
-            r?.reloadAmountKg ??
-              raw?.reloadAmountKg ??
-              raw?.reload_amount_kg ??
-              0,
-          ) || 0;
+        const isReload = !!window.TDG_VOLUME?.isReloadRecord?.(r);
+        const eventType = isReload ? "reload" : "";
+        const reloadAmountKg = isReload
+          ? window.TDG_VOLUME?.getReloadAmountKg?.(r) || 0
+          : 0;
 
         return {
           ...r,
@@ -1334,7 +1329,7 @@
       }
 
       document.addEventListener("DOMContentLoaded", async () => {
-        const sess = await window.TDG_AUTH?.requireAuthAsync?.();
+        const sess = window.TDG_AUTH?.requireAuth?.();
         if (!sess) return;
 
         $("who").textContent =

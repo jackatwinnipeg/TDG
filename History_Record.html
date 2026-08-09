@@ -186,7 +186,7 @@
       }
       .batch-search-grid {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(5, minmax(0, 1fr));
         gap: 10px;
       }
       .batch-search-actions {
@@ -419,15 +419,6 @@
               </div>
 
               <div>
-                <label for="batchFillRoute">Route</label>
-                <select id="batchFillRoute">
-                  <option value="">All</option>
-                  <option value="Z01">Z01</option>
-                  <option value="Z02">Z02</option>
-                </select>
-              </div>
-
-              <div>
                 <label for="batchFillDriver">Driver Number</label>
                 <input
                   id="batchFillDriver"
@@ -554,6 +545,7 @@
     <script src="./js/supabaseConfig.js"></script>
     <script src="./js/supabaseClient.js"></script>
     <script src="./js/auth_supabase.js"></script>
+    <script src="./js/tdg_volume.js"></script>
 
     <script>
       const $ = (id) => document.getElementById(id);
@@ -578,7 +570,6 @@
       };
       let _batchFillFilters = {
         weekCycle: "",
-        route: "",
         driverNumber: "",
         accountNumber: "",
         dateFrom: "",
@@ -836,20 +827,7 @@
 
 
       function isReloadRecord(record) {
-        const eventType = norm(
-          record?.raw?.eventType ||
-          record?.raw?.event_type ||
-          record?.eventType ||
-          ""
-        );
-
-        if (eventType === "reload") return true;
-
-        const notes = norm(record?.notes);
-        return (
-          safe(record?.accountNumber) === "003" &&
-          notes.startsWith("tdg reload")
-        );
+        return !!window.TDG_VOLUME?.isReloadRecord?.(record);
       }
 
       function getCurrentBatchSource() {
@@ -863,7 +841,6 @@
       function getBatchFillFilters() {
         return {
           weekCycle: safe($("batchFillWeekCycle")?.value),
-          route: safe($("batchFillRoute")?.value),
           driverNumber: safe($("batchFillDriver")?.value),
           accountNumber: safe($("batchFillAccount")?.value),
           dateFrom: safe($("batchFillDateFrom")?.value),
@@ -873,7 +850,6 @@
 
       function resetBatchFillSearch(sess = null) {
         if ($("batchFillWeekCycle")) $("batchFillWeekCycle").value = "";
-        if ($("batchFillRoute")) $("batchFillRoute").value = "";
         if ($("batchFillAccount")) $("batchFillAccount").value = "";
         if ($("batchFillDateFrom")) $("batchFillDateFrom").value = "";
         if ($("batchFillDateTo")) $("batchFillDateTo").value = "";
@@ -908,7 +884,7 @@
         const stats = $("batchFillSearchStats");
         if (stats) {
           stats.textContent =
-            "Choose Week Cycle, Route, Driver Number, Account Number and/or any date range.";
+            "Choose Week Cycle, Driver Number, Account Number and/or any date range.";
         }
 
         updateBatchSelectionSummary();
@@ -923,13 +899,6 @@
         if (
           filters.weekCycle &&
           safe(record?.weekCycle) !== filters.weekCycle
-        ) {
-          return false;
-        }
-
-        if (
-          filters.route &&
-          norm(record?.accountRoute) !== norm(filters.route)
         ) {
           return false;
         }
@@ -988,9 +957,6 @@
 
           if (filters.weekCycle) {
             parts.push(`Week ${filters.weekCycle}`);
-          }
-          if (filters.route) {
-            parts.push(`Route ${filters.route}`);
           }
           if (filters.driverNumber) {
             parts.push(`Driver ${filters.driverNumber}`);
@@ -1559,7 +1525,7 @@
       });
 
       document.addEventListener("DOMContentLoaded", async () => {
-        const sess = await window.TDG_AUTH?.requireAuthAsync?.();
+        const sess = window.TDG_AUTH?.requireAuth?.();
         if (!sess) return;
 
         try {
@@ -1628,7 +1594,6 @@
 
         [
           "batchFillWeekCycle",
-          "batchFillRoute",
           "batchFillDriver",
           "batchFillAccount",
           "batchFillDateFrom",
