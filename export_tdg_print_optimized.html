@@ -394,9 +394,10 @@
     <script src="./js/supabaseConfig.js"></script>
     <script src="./js/supabaseClient.js"></script>
     <script src="./js/auth_supabase.js"></script>
+    <script src="./js/tdg_volume.js"></script>
     <script>
-      const KG_TO_LBS = 2.20462;
-      const LBS_TO_KG = 0.453592;
+      const LBS_TO_KG = 0.45359237;
+      const KG_TO_LBS = 1 / LBS_TO_KG;
 
       function lbsToKg(v) {
         return (Number(v) || 0) * LBS_TO_KG;
@@ -479,6 +480,32 @@
         return Number.isFinite(n) ? n : 0;
       }
 
+      function getRecordDeliveredLbs(record) {
+        return num(
+          record?.delivered ??
+            record?.deliveredVolume ??
+            record?.delivered_volume ??
+            record?.volumeDelivered ??
+            record?.qtyDelivered ??
+            0,
+        );
+      }
+
+      function applyRecordToTdgBalance(runningKg, record) {
+        const reloadKg =
+          window.TDG_VOLUME?.getReloadAmountKg?.(record) || 0;
+        const adjustmentLbs =
+          window.TDG_VOLUME?.getAdjustmentAmountLbs?.(record) || 0;
+        const deliveredLbs = getRecordDeliveredLbs(record);
+
+        return (
+          runningKg +
+          reloadKg -
+          lbsToKg(deliveredLbs) -
+          lbsToKg(adjustmentLbs)
+        );
+      }
+
       function buildRow(r) {
         // 兼容你 current_detail.html 记录结构
         const arrive = formatTime(
@@ -553,35 +580,20 @@
         );
 
         // TDG START VOLUME
-        document.getElementById("hdrTdgStart").textContent = safe(
-          header.tdgVolume || header.tdgStartVolume || "",
-        );
+        const tdgStartValue =
+          header.tdgVolume ?? header.tdgStartVolume ?? "";
+        document.getElementById("hdrTdgStart").textContent =
+          safe(tdgStartValue);
 
-        // TDG REMAINING VOLUME：按 lbs → kg 转换后计算
-        const tdgStart = parseNum(
-          header.tdgVolume ?? header.tdgStartVolume ?? "",
-        );
-
-        let deliveredKgSum = 0;
-
-        for (const r of records) {
-          const deliveredLbs = parseNum(
-            r.delivered ??
-              r.deliveredVolume ??
-              r.volumeDelivered ??
-              r.qtyDelivered ??
-              "",
-          );
-
-          if (deliveredLbs != null) {
-            deliveredKgSum += lbsToKg(deliveredLbs);
-          }
-        }
-
-        const tdgRemain = tdgStart == null ? null : tdgStart - deliveredKgSum;
+        // Match Index exactly: Start + Reload - Delivered - Adjustment.
+        const tdgStart = parseNum(tdgStartValue);
+        const tdgRemain =
+          tdgStart == null
+            ? null
+            : records.reduce(applyRecordToTdgBalance, tdgStart);
 
         document.getElementById("hdrTdgRemaining").textContent =
-          tdgRemain == null ? "" : String(Math.round(tdgRemain));
+          tdgRemain == null ? "" : String(Math.trunc(tdgRemain));
 
         // 签名区
         document.getElementById("sigPrint").textContent = safe(
@@ -644,20 +656,19 @@
   return Number.MAX_SAFE_INTEGER;
 }
 
-const rows = records
+const sortedRecords = records
   .slice()
   .sort((a, b) => {
     return getSortTimeValue(a) - getSortTimeValue(b); // 最早 -> 最晚
-  })
-  .map(buildRow);
+  });
+
+const rows = sortedRecords.map(buildRow);
 
         // Compute running balance
-        let running = num(header.tdgVolume || header.tdgStartVolume || 0); // kg
+        let running = num(tdgStartValue); // kg
 
         for (let i = 0; i < rows.length; i++) {
-          const deliveredLbs = num(rows[i].delivered);
-
-          running -= lbsToKg(deliveredLbs);
+          running = applyRecordToTdgBalance(running, sortedRecords[i]);
 
           const balanceLbs = Math.round(kgToLbs(running));
 
