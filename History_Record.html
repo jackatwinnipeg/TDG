@@ -422,6 +422,8 @@
                 <label for="batchFillRoute">Route</label>
                 <select id="batchFillRoute">
                   <option value="">All</option>
+                  <option value="Z01">Z01</option>
+                  <option value="Z02">Z02</option>
                 </select>
               </div>
 
@@ -858,30 +860,6 @@
         return hasSearchResultsOpen ? _filtered : _all;
       }
 
-      function populateBatchFillRouteOptions() {
-        const select = $("batchFillRoute");
-        if (!select) return;
-
-        const routes = [
-          ...new Set(
-            _all
-              .map((record) => safe(record?.accountRoute))
-              .filter(Boolean)
-          ),
-        ].sort((a, b) =>
-          a.localeCompare(b, undefined, {
-            numeric: true,
-            sensitivity: "base",
-          })
-        );
-
-        select.replaceChildren(new Option("All", ""));
-
-        routes.forEach((route) => {
-          select.add(new Option(route, route));
-        });
-      }
-
       function getBatchFillFilters() {
         return {
           weekCycle: safe($("batchFillWeekCycle")?.value),
@@ -894,8 +872,6 @@
       }
 
       function resetBatchFillSearch(sess = null) {
-        populateBatchFillRouteOptions();
-
         if ($("batchFillWeekCycle")) $("batchFillWeekCycle").value = "";
         if ($("batchFillRoute")) $("batchFillRoute").value = "";
         if ($("batchFillAccount")) $("batchFillAccount").value = "";
