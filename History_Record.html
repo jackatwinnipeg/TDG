@@ -437,6 +437,15 @@
               </div>
 
               <div>
+                <label for="batchFillRoute">Route</label>
+                <select id="batchFillRoute">
+                  <option value="">All Routes</option>
+                  <option value="Z01">Z01</option>
+                  <option value="Z02">Z02</option>
+                </select>
+              </div>
+
+              <div>
                 <label for="batchFillDateFrom">Date From</label>
                 <input id="batchFillDateFrom" type="date" />
               </div>
@@ -572,6 +581,7 @@
         weekCycle: "",
         driverNumber: "",
         accountNumber: "",
+        route: "",
         dateFrom: "",
         dateTo: "",
       };
@@ -851,6 +861,7 @@
           weekCycle: safe($("batchFillWeekCycle")?.value),
           driverNumber: safe($("batchFillDriver")?.value),
           accountNumber: safe($("batchFillAccount")?.value),
+          route: safe($("batchFillRoute")?.value),
           dateFrom: safe($("batchFillDateFrom")?.value),
           dateTo: safe($("batchFillDateTo")?.value),
         };
@@ -859,6 +870,7 @@
       function resetBatchFillSearch(sess = null) {
         if ($("batchFillWeekCycle")) $("batchFillWeekCycle").value = "";
         if ($("batchFillAccount")) $("batchFillAccount").value = "";
+        if ($("batchFillRoute")) $("batchFillRoute").value = "";
         if ($("batchFillDateFrom")) $("batchFillDateFrom").value = "";
         if ($("batchFillDateTo")) $("batchFillDateTo").value = "";
 
@@ -892,7 +904,7 @@
         const stats = $("batchFillSearchStats");
         if (stats) {
           stats.textContent =
-            "Choose Week Cycle, Driver Number, Account Number and/or any date range.";
+            "Choose Week Cycle, Driver Number, Account Number, Route and/or any date range.";
         }
 
         updateBatchSelectionSummary();
@@ -921,6 +933,13 @@
         if (
           filters.accountNumber &&
           !norm(accountNumber).includes(norm(filters.accountNumber))
+        ) {
+          return false;
+        }
+
+        if (
+          filters.route &&
+          norm(record?.accountRoute) !== norm(filters.route)
         ) {
           return false;
         }
@@ -971,6 +990,9 @@
           }
           if (filters.accountNumber) {
             parts.push(`Account contains ${filters.accountNumber}`);
+          }
+          if (filters.route) {
+            parts.push(`Route ${filters.route.toUpperCase()}`);
           }
           if (filters.dateFrom || filters.dateTo) {
             parts.push(
@@ -1619,6 +1641,7 @@
           "batchFillWeekCycle",
           "batchFillDriver",
           "batchFillAccount",
+          "batchFillRoute",
           "batchFillDateFrom",
           "batchFillDateTo",
         ].forEach((id) => {
