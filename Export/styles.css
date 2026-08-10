@@ -294,3 +294,263 @@ body{
   .page{border:none; margin:0; width:100%;}
   .noprint{display:none !important;}
 }
+
+/* =========================================================
+   Screen and mobile refinement (print layout is unchanged)
+   ========================================================= */
+@media screen{
+  body{
+    background:
+      radial-gradient(circle at top left, #e9f4fb 0, transparent 34rem),
+      #eef2f6;
+    text-rendering:optimizeLegibility;
+    -webkit-text-size-adjust:100%;
+  }
+
+  .page{
+    border-color:#d4dde6;
+    border-radius:14px;
+    box-shadow:0 16px 42px rgba(24,45,68,.14);
+  }
+
+  .actions button{
+    min-height:46px;
+    padding:11px 18px;
+    border-color:#17324d;
+    color:#10283e;
+    font-size:15px;
+    font-weight:700;
+    touch-action:manipulation;
+    transition:
+      background-color .16s ease,
+      box-shadow .16s ease,
+      transform .12s ease;
+  }
+
+  .actions button:focus-visible,
+  .cell[contenteditable="true"]:focus-visible{
+    outline:3px solid rgba(0,128,192,.30);
+    outline-offset:2px;
+  }
+
+  .actions button:active{
+    transform:translateY(1px);
+  }
+}
+
+@media screen and (max-width:740px){
+  body{
+    min-height:100dvh;
+    background:#eef2f6;
+  }
+
+  .page{
+    width:100%;
+    margin:0;
+    padding:
+      max(12px, env(safe-area-inset-top, 0px))
+      max(12px, env(safe-area-inset-right, 0px))
+      18px
+      max(12px, env(safe-area-inset-left, 0px));
+    border:0;
+    border-radius:0;
+    box-shadow:none;
+  }
+
+  .topline{
+    align-items:flex-start;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+
+  .titlebar{
+    gap:8px;
+    padding-bottom:9px;
+    border-bottom:2px solid #111;
+  }
+
+  .titlebar__center{
+    text-align:left;
+  }
+
+  .title{
+    font-size:17px;
+    line-height:1.25;
+  }
+
+  .checkline,
+  .unitRow{
+    justify-content:flex-start;
+    flex-wrap:wrap;
+  }
+
+  .checkbox{
+    width:18px;
+    height:18px;
+    flex:0 0 18px;
+  }
+
+  .productBlock{
+    margin-bottom:12px;
+    border-radius:8px;
+    overflow:hidden;
+  }
+
+  .productBlock__left,
+  .productBlock__right{
+    padding:11px 12px;
+  }
+
+  .productList{
+    gap:9px;
+  }
+
+  .checkrow{
+    gap:9px;
+    font-size:13px;
+    line-height:1.35;
+  }
+
+  .metaGrid,
+  .metaGrid--2{
+    grid-template-columns:1fr;
+    gap:8px;
+  }
+
+  .metaField .metaLabel{
+    margin-bottom:4px;
+    font-size:12px;
+  }
+
+  .metaField .metaValue,
+  .value--box{
+    min-height:28px;
+    height:auto;
+    padding:5px 7px;
+    border-radius:4px;
+    font-size:13px;
+  }
+
+  .tableWrap{
+    width:100%;
+    overflow-x:auto;
+    border-radius:8px;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:thin;
+    scrollbar-color:#7a8d9f #e2e8ee;
+  }
+
+  .tableWrap::-webkit-scrollbar{
+    height:7px;
+  }
+
+  .tableWrap::-webkit-scrollbar-track{
+    background:#e2e8ee;
+  }
+
+  .tableWrap::-webkit-scrollbar-thumb{
+    background:#7a8d9f;
+    border-radius:999px;
+  }
+
+  .tdgTable{
+    min-width:900px;
+    font-size:12px;
+  }
+
+  .tdgTable thead th{
+    padding:7px 5px;
+  }
+
+  .tdgTable tbody td{
+    min-height:30px;
+    height:30px;
+    padding:5px;
+  }
+
+  .cell{
+    min-height:20px;
+  }
+
+  .footerBlock{
+    margin-top:14px;
+    padding-top:11px;
+  }
+
+  .declare{
+    font-size:11px;
+    line-height:1.4;
+  }
+
+  .signRow{
+    gap:10px;
+  }
+
+  .signBox{
+    min-height:34px;
+    height:auto;
+    padding:6px 8px;
+  }
+
+  .miniGrid{
+    grid-template-columns:1fr;
+    gap:8px;
+  }
+
+  .miniBox{
+    min-height:30px;
+    height:auto;
+    padding:5px 7px;
+  }
+
+  .actions{
+    position:sticky;
+    z-index:20;
+    bottom:0;
+    width:100%;
+    margin:0;
+    padding:
+      10px
+      max(12px, env(safe-area-inset-right, 0px))
+      max(10px, env(safe-area-inset-bottom, 0px))
+      max(12px, env(safe-area-inset-left, 0px));
+    gap:8px;
+    background:rgba(238,242,246,.94);
+    border-top:1px solid #d4dde6;
+    backdrop-filter:blur(12px);
+    -webkit-backdrop-filter:blur(12px);
+  }
+
+  .actions button{
+    flex:1 1 0;
+    min-width:0;
+    min-height:50px;
+    padding:11px 10px;
+  }
+}
+
+@media screen and (max-width:380px){
+  .page{
+    padding-right:10px;
+    padding-left:10px;
+  }
+
+  .title{
+    font-size:16px;
+  }
+
+  .actions{
+    padding-right:10px;
+    padding-left:10px;
+  }
+}
+
+@media (prefers-reduced-motion:reduce){
+  *,
+  *::before,
+  *::after{
+    transition-duration:.01ms !important;
+    animation-duration:.01ms !important;
+    animation-iteration-count:1 !important;
+  }
+}
