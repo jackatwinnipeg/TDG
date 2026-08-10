@@ -554,8 +554,13 @@
       }
 
       async function init() {
-        const sess = window.TDG_AUTH?.requireAuth?.();
-        if (!sess) return;
+        const auth = window.TDG_AUTH;
+const sess =
+  typeof auth?.requireAuthAsync === "function"
+    ? await auth.requireAuthAsync()
+    : auth?.requireAuth?.();
+
+if (!sess) return;
 
         const selection = readSelection();
         const selected = selection.accounts;
