@@ -643,39 +643,52 @@
         );
       }
 
-      function fillSheet(sheet, group, records) {
+      function fillSheet(sheet, group, records, dailyLog = null) {
         const sorted = [...records].sort(
           (a, b) => getSortTimeValue(a) - getSortTimeValue(b)
         );
 
         const first = sorted[0] || {};
+        const dailyForm =
+          dailyLog?.payload?.form &&
+          typeof dailyLog.payload.form === "object"
+            ? dailyLog.payload.form
+            : {};
 
-        const startKm = firstNonEmpty(
-          sorted,
-          (record) =>
-            record?.start_km ??
-            record?.raw?.startKm ??
-            ""
-        );
+        const startKm =
+          safe(dailyForm.startKm) !== ""
+            ? dailyForm.startKm
+            : firstNonEmpty(
+                sorted,
+                (record) =>
+                  record?.start_km ??
+                  record?.raw?.startKm ??
+                  ""
+              );
 
-        const endKm = lastNonEmpty(
-          sorted,
-          (record) =>
-            record?.end_km ??
-            record?.raw?.endKm ??
-            ""
-        );
+        const endKm =
+          safe(dailyForm.endKm) !== ""
+            ? dailyForm.endKm
+            : lastNonEmpty(
+                sorted,
+                (record) =>
+                  record?.end_km ??
+                  record?.raw?.endKm ??
+                  ""
+              );
 
         const totalKm =
           safe(startKm) !== "" && safe(endKm) !== ""
             ? String(num(endKm) - num(startKm))
-            : lastNonEmpty(
-                sorted,
-                (record) =>
-                  record?.total_km ??
-                  record?.raw?.totalKm ??
-                  ""
-              );
+            : safe(dailyForm.totalKm) !== ""
+              ? dailyForm.totalKm
+              : lastNonEmpty(
+                  sorted,
+                  (record) =>
+                    record?.total_km ??
+                    record?.raw?.totalKm ??
+                    ""
+                );
 
         const shiftStart = firstNonEmpty(
           sorted,
@@ -836,6 +849,34 @@
         });
       }
 
+      async function loadDailyLogsForDates(dates) {
+        const uniqueDates = [...new Set(dates.filter(Boolean))];
+        if (!uniqueDates.length) return [];
+
+        const sb = window.supabaseClient;
+        if (!sb?.from) throw new Error("Supabase client not initialized");
+
+        return runInChunks(uniqueDates, async (chunk) => {
+          const { data, error } = await sb
+            .from("tdg_daily_logs")
+            .select(`
+              id,
+              owner_id,
+              log_date,
+              driver_employee_number,
+              driver_name,
+              payload,
+              created_at,
+              updated_at
+            `)
+            .in("log_date", chunk)
+            .order("created_at", { ascending: true });
+
+          if (error) throw error;
+          return data || [];
+        });
+      }
+
       function recordMatchesGroup(record, group) {
         if (safe(record?.work_date) !== safe(group?.date)) {
           return false;
@@ -850,6 +891,33 @@
         }
 
         return true;
+      }
+
+      function dailyLogMatchesGroup(dailyLog, group) {
+        if (safe(dailyLog?.log_date) !== safe(group?.date)) {
+          return false;
+        }
+
+        if (safe(group?.ownerId)) {
+          return safe(dailyLog?.owner_id) === safe(group.ownerId);
+        }
+
+        if (safe(group?.driverNumber)) {
+          return (
+            safe(dailyLog?.driver_employee_number) ===
+            safe(group.driverNumber)
+          );
+        }
+
+        return true;
+      }
+
+      function latestDailyLogForGroup(dailyLogs, group) {
+        const matches = dailyLogs.filter((dailyLog) =>
+          dailyLogMatchesGroup(dailyLog, group)
+        );
+
+        return matches[matches.length - 1] || null;
       }
 
       async function init() {
@@ -873,9 +941,11 @@ if (!sess) return;
         }
 
         try {
-          const allRecords = await loadRecordsForDates(
-            groups.map((group) => group.date)
-          );
+          const selectedDates = groups.map((group) => group.date);
+          const [allRecords, allDailyLogs] = await Promise.all([
+            loadRecordsForDates(selectedDates),
+            loadDailyLogsForDates(selectedDates),
+          ]);
 
           const container = document.getElementById("sheets");
           const template = document.getElementById("tdgSheetTemplate");
@@ -889,11 +959,16 @@ if (!sess) return;
             // Requirement: automatically ignore Daily Logs with no records.
             if (!records.length) continue;
 
+            const dailyLog = latestDailyLogForGroup(
+              allDailyLogs,
+              group
+            );
+
             const fragment = template.content.cloneNode(true);
             const sheet = fragment.querySelector(".sheet");
             if (!sheet) continue;
 
-            fillSheet(sheet, group, records);
+            fillSheet(sheet, group, records, dailyLog);
             container.appendChild(fragment);
             pageCount += 1;
           }
