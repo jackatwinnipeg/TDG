@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="zh-CN">
   <head>
+<script src="./js/tdg_core.js"></script>
     <meta charset="utf-8" />
     <meta
       name="viewport"
@@ -405,7 +406,7 @@
 </div>
     </template>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0"></script>
     <script src="./js/supabaseConfig.js"></script>
     <script src="./js/supabaseClient.js"></script>
     <script src="./js/auth_supabase.js"></script>
@@ -453,7 +454,7 @@
       function readSelection() {
         try {
           const parsed = JSON.parse(
-            localStorage.getItem(LS_BATCH_TDG_SELECTION) || "null"
+            TDG_STORAGE.getItem(LS_BATCH_TDG_SELECTION) || "null"
           );
 
           return parsed && Array.isArray(parsed.groups)
@@ -643,7 +644,7 @@
         );
       }
 
-      function fillSheet(sheet, group, records, dailyLog = null) {
+      function fillSheet(sheet, group, records, dailyLog = null, shift = null, openingKg = null) {
         const sorted = [...records].sort(
           (a, b) => getSortTimeValue(a) - getSortTimeValue(b)
         );
@@ -735,7 +736,7 @@
             ""
         );
 
-        const tdgStartKg = num(
+        const storedStartKg = num(
           firstNonEmpty(
             sorted,
             (record) =>
@@ -746,13 +747,15 @@
           )
         );
 
+        const tdgStartKg=openingKg ?? storedStartKg;
+        const header=TDG_CORE.resolveShift(sorted,dailyLog,shift);
         setText(sheet, "hdrDate", group.date);
         setText(sheet, "hdrVehicle", vehicleNo);
-        setText(sheet, "hdrStartKm", startKm);
-        setText(sheet, "hdrEndKm", endKm);
-        setText(sheet, "hdrTotalKm", totalKm);
-        setText(sheet, "hdrShiftStart", shiftStart);
-        setText(sheet, "hdrShiftFinish", shiftFinish);
+        setText(sheet, "hdrStartKm", header.startKm);
+        setText(sheet, "hdrEndKm", header.endKm);
+        setText(sheet, "hdrTotalKm", header.totalKm);
+        setText(sheet, "hdrShiftStart", header.shiftStart);
+        setText(sheet, "hdrShiftFinish", header.shiftFinish);
         setText(sheet, "hdrTdgStart", integerPart(tdgStartKg));
         setText(sheet, "sigPrint", driverName);
         setText(sheet, "sigSign", signature);
@@ -816,7 +819,7 @@
         if (!sb?.from) throw new Error("Supabase client not initialized");
 
         return runInChunks(uniqueDates, async (chunk) => {
-          const { data, error } = await sb
+          const { data, error } = await TDG_CORE.paged(sb
             .from("tdg_records")
             .select(`
               id,
@@ -842,7 +845,7 @@
               created_at
             `)
             .in("work_date", chunk)
-            .order("created_at", { ascending: true });
+            .order("created_at", { ascending: true }));
 
           if (error) throw error;
           return data || [];
@@ -857,7 +860,7 @@
         if (!sb?.from) throw new Error("Supabase client not initialized");
 
         return runInChunks(uniqueDates, async (chunk) => {
-          const { data, error } = await sb
+          const { data, error } = await TDG_CORE.paged(sb
             .from("tdg_daily_logs")
             .select(`
               id,
@@ -870,7 +873,7 @@
               updated_at
             `)
             .in("log_date", chunk)
-            .order("created_at", { ascending: true });
+            .order("created_at", { ascending: true }));
 
           if (error) throw error;
           return data || [];
@@ -878,6 +881,7 @@
       }
 
       function recordMatchesGroup(record, group) {
+        if(group.vehicleNo!=null && safe(record.vehicle_no)!==safe(group.vehicleNo)) return false;
         if (safe(record?.work_date) !== safe(group?.date)) {
           return false;
         }
@@ -951,7 +955,8 @@ if (!sess) return;
           const template = document.getElementById("tdgSheetTemplate");
           let pageCount = 0;
 
-          for (const group of groups) {
+          const vehicleGroups=groups.flatMap(g=>[...new Set(allRecords.filter(r=>recordMatchesGroup(r,g)).map(r=>safe(r.vehicle_no)))].map(vehicleNo=>({...g,vehicleNo})));
+          for (const group of vehicleGroups) {
             const records = allRecords.filter((record) =>
               recordMatchesGroup(record, group)
             );
@@ -968,7 +973,9 @@ if (!sess) return;
             const sheet = fragment.querySelector(".sheet");
             if (!sheet) continue;
 
-            fillSheet(sheet, group, records, dailyLog);
+            const context=await TDG_CORE.loadShiftContext(window.supabaseClient,records[0].owner_id,group.date,records[0].vehicle_no);
+            const opening=await TDG_CORE.openingBalance(window.supabaseClient,records[0].owner_id,group.date,records[0].vehicle_no,records);
+            fillSheet(sheet, group, records, context.dailyLog,context.shift,opening);
             container.appendChild(fragment);
             pageCount += 1;
           }

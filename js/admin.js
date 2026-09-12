@@ -89,7 +89,7 @@
 
     const { data: profile, error: profileError } = await sb
       .from("tdg_profiles")
-      .select("id, username, display_name, role, email")
+      .select("id, username, display_name, role, email, is_active")
       .eq("id", user.id)
       .single();
 
@@ -99,7 +99,7 @@
       return false;
     }
 
-    if (profile.role !== "admin") {
+    if (profile.role !== "admin" || !profile.is_active) {
       alert("没有权限访问此页面");
       window.location.replace("./index.html");
       return false;
@@ -422,7 +422,7 @@
     const vehicleNo = safe(payload.vehicleNo);
     const phone = safe(payload.phone);
     const email = safe(payload.email).toLowerCase();
-    const password = safe(payload.password);
+    const password = String(payload.password ?? "");
 
     assertOrThrow(driverNumber, "Driver Number 不能为空");
     assertOrThrow(Rules.driverNumber(driverNumber), "Driver Number 格式不合法");
@@ -433,10 +433,10 @@
     assertOrThrow(Rules.vehicleNo(vehicleNo), "Vehicle No 太长");
 
     if (mode === "create") {
-      assertOrThrow(password.length >= 6, "密码至少 6 位");
+      assertOrThrow(password.length >= 12, "密码至少 12 位");
     }
     if (mode === "update" && password) {
-      assertOrThrow(password.length >= 6, "密码至少 6 位");
+      assertOrThrow(password.length >= 12, "密码至少 12 位");
     }
 
     return {
@@ -502,82 +502,24 @@
   }
 
   function parseCsv(text) {
-    const t = String(text ?? "")
-      .replace(/\r\n/g, "\n")
-      .replace(/\r/g, "\n")
-      .trim();
-    if (!t) return [];
-
-    const lines = [];
-    let cur = "";
-    let inQ = false;
-
-    for (let i = 0; i < t.length; i++) {
-      const ch = t[i];
-      if (ch === '"') {
-        if (inQ && t[i + 1] === '"') {
-          cur += '"';
-          i++;
-        } else {
-          inQ = !inQ;
-        }
-      } else if (ch === "\n" && !inQ) {
-        lines.push(cur);
-        cur = "";
-      } else {
-        cur += ch;
-      }
-    }
-    if (cur) lines.push(cur);
-
-    const splitRow = (row) => {
-      const out = [];
-      let s = "";
-      let q = false;
-      for (let i = 0; i < row.length; i++) {
-        const ch = row[i];
-        if (ch === '"') {
-          if (q && row[i + 1] === '"') {
-            s += '"';
-            i++;
-          } else {
-            q = !q;
-          }
-        } else if (ch === "," && !q) {
-          out.push(s);
-          s = "";
-        } else {
-          s += ch;
-        }
-      }
-      out.push(s);
-      return out.map((x) => x.trim());
-    };
-
-    const header = splitRow(lines[0]).map((h) => h.replace(/^\uFEFF/, "").trim());
-    const rows = [];
-
-    for (let i = 1; i < lines.length; i++) {
-      const cols = splitRow(lines[i]);
-      if (cols.every((c) => !c)) continue;
-      const obj = {};
-      for (let j = 0; j < header.length; j++) obj[header[j]] = cols[j] ?? "";
-      rows.push(obj);
-    }
-
-    return rows;
+    const source=String(text??'').replace(/^\uFEFF/,'').replace(/\r\n?/g,'\n');let field='',row=[],rows=[],quoted=false,closed=false;
+    const pushField=()=>{row.push(field.trim());field='';closed=false;};const pushRow=()=>{pushField();if(row.some(Boolean))rows.push(row);row=[];};
+    for(let i=0;i<source.length;i++){const ch=source[i];if(quoted){if(ch==='"'){if(source[i+1]==='"'){field+='"';i++;}else{quoted=false;closed=true;}}else field+=ch;}else if(ch===',')pushField();else if(ch==='\n')pushRow();else if(ch==='"'&&!field&&!closed)quoted=true;else{if((closed&&ch.trim())||ch==='"')throw new Error('Invalid CSV quote');field+=ch;}}
+    if(quoted)throw new Error('Unclosed CSV quote');if(field||row.length||closed)pushRow();if(!rows.length)return [];
+    const header=rows.shift();if(header.some(h=>!h)||new Set(header).size!==header.length)throw new Error('Invalid CSV headers');
+    return rows.map((cells,i)=>{if(cells.length!==header.length)throw new Error(`CSV row ${i+2}: wrong column count`);return Object.fromEntries(header.map((h,j)=>[h,cells[j]]));});
   }
 
   const Api = {
     users: {
       async list() {
         const sb = getSb();
-        const { data, error } = await sb
+        const { data, error } = await TDG_CORE.paged(sb
           .from("tdg_profiles")
           .select(
             "id, username, driver_number, display_name, role, is_active, must_change_password, vehicle_no, phone, email, created_at, updated_at"
           )
-          .order("driver_number", { ascending: true });
+          .order("driver_number", { ascending: true }));
 
         if (error) throw error;
         return sanitizeUsers(data || []);
@@ -597,6 +539,7 @@
           vehicleNo: u.vehicleNo,
           phone: u.phone,
           isActive: u.isActive,
+          is_active: u.isActive,
           mustChangePassword: u.mustChangePassword,
         });
 
@@ -621,10 +564,12 @@
 
         const result = await callFn(FN.updateUser, {
           id,
+          expectedUpdatedAt:patch.expectedUpdatedAt,
           driverNumber: u.driverNumber,
           displayName: u.displayName,
           role: u.role,
           isActive: u.isActive,
+          is_active: u.isActive,
           mustChangePassword: u.mustChangePassword,
           vehicleNo: u.vehicleNo,
           phone: u.phone,
@@ -644,12 +589,12 @@
     customers: {
       async list() {
         const sb = getSb();
-        const { data, error } = await sb
+        const { data, error } = await TDG_CORE.paged(sb
           .from("tdg_customers")
           .select(
             "id, account_number, account_name, account_address, city, route, created_at, updated_at"
           )
-          .order("account_number", { ascending: true });
+          .order("account_number", { ascending: true }));
 
         if (error) throw error;
         return sanitizeCustomers(data || []);
@@ -724,6 +669,8 @@
         const rows = parseCsv(csvText);
         assertOrThrow(rows.length > 0, "CSV 没有数据");
 
+        const aliases=[['accountNumber','accountNo','no','Position','Account Number','AccountNo'],['accountName','name','Customer Name','Account Name'],['accountAddress','address','Address','Account Address'],['city','City'],['route','Route']];
+        if(aliases.some(names=>!names.some(n=>Object.hasOwn(rows[0],n))))throw new Error('CSV requires Number, Name, Address, City and Route columns; missing columns cannot clear existing values.');
         const mapped = rows
           .map((r) => ({
             account_number: safe(
@@ -756,6 +703,9 @@
 
         assertOrThrow(mapped.length > 0, "CSV 缺少必要字段（Account Number / Name）");
 
+        if(mapped.length!==rows.length)throw new Error('CSV contains missing account numbers/names');
+        if(new Set(mapped.map(r=>r.account_number)).size!==mapped.length)throw new Error('CSV contains duplicate accounts');
+        if(!confirm(`Import ${mapped.length} customers? Existing values, including explicit empty cells, will be replaced.`))return 0;
         const sb = getSb();
         const { error } = await sb.from("tdg_customers").upsert(mapped, {
           onConflict: "account_number",
@@ -769,7 +719,7 @@
       async migrateFromLocalStorage() {
         let local = [];
         try {
-          local = JSON.parse(localStorage.getItem("tdg_customers_demo_v2") || "[]");
+          local = JSON.parse(TDG_STORAGE.getItem("tdg_customers_demo_v2") || "[]");
         } catch {
           local = [];
         }
@@ -883,7 +833,7 @@
               )}" type="button">编辑</button>
               <button class="btn warn" data-act="user-del" data-id="${escapeHtml(
                 u.id
-              )}" data-name="${escapeHtml(u.driverNumber || u.username)}" type="button">删除</button>
+              )}" data-name="${escapeHtml(u.driverNumber || u.username)}" type="button">停用</button>
             </td>
           </tr>
         `;
@@ -992,7 +942,7 @@
           vehicleNo: safe($("f_vehicleNo").value),
           phone: safe($("f_phone").value),
           email: safe($("f_email").value),
-          password: safe($("f_password").value),
+          password: String($("f_password").value),
         };
 
         await Api.users.create(payload);
@@ -1023,6 +973,7 @@
     $("btnSave").onclick = async () => {
       try {
         const patch = {
+          expectedUpdatedAt:u.updatedAt,
           driverNumber: safe($("f_driverNumber").value),
           displayName: safe($("f_displayName").value),
           role: $("f_role").value,
@@ -1031,7 +982,7 @@
           vehicleNo: safe($("f_vehicleNo").value),
           phone: safe($("f_phone").value),
           email: safe($("f_email").value),
-          password: safe($("f_password").value),
+          password: String($("f_password").value),
         };
 
         await Api.users.update(id, patch);
@@ -1044,11 +995,11 @@
   }
 
   async function deleteUser(id, name) {
-    if (!confirm(`确定删除用户：${name || id} ?`)) return;
+    if (!confirm(`确定停用用户（历史保留）：${name || id} ?`)) return;
 
     try {
       await Api.users.remove(id);
-      alert("已删除");
+      alert("已停用，历史保留");
       renderAll();
     } catch (e) {
       showApiError(e, "删除失败");
@@ -1320,8 +1271,8 @@
 
   on($("btnDangerResetAll"), "click", () => {
     if (!confirm("⚠️确定清空所有本地数据？（不可恢复）")) return;
-    localStorage.clear();
-    sessionStorage.clear();
+    TDG_STORAGE.clear();
+    TDG_SESSION_STORAGE.clear();
     alert("已清空。将返回登录页。");
     window.location.href = "./login.html";
   });

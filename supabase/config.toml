@@ -1,0 +1,3 @@
+# tdg-login verifies credentials itself and must accept unauthenticated login requests.
+[functions.tdg-login]
+verify_jwt = false

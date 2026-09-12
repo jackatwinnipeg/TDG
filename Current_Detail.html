@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="zh-CN">
   <head>
+<script src="./js/tdg_core.js"></script>
     <meta charset="utf-8" />
     <meta
       name="viewport"
@@ -570,7 +571,7 @@
       </section>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0"></script>
     <script src="./js/supabaseConfig.js"></script>
     <script src="./js/supabaseClient.js"></script>
     <script src="./js/auth_supabase.js"></script>
@@ -664,12 +665,7 @@
         try {
           const sb = getSupabaseClientStrict();
 
-          const { data, error } = await sb
-            .from("tdg_profiles")
-            .select("driver_number, display_name")
-            .eq("role", "driver")
-            .eq("is_active", true)
-            .order("display_name", { ascending: true });
+          const { data, error } = await sb.rpc('tdg_driver_directory');
 
           if (error) {
             console.warn("loadDriversDirectory error:", error);
@@ -692,7 +688,7 @@
 
       function loadLocalRecords() {
         try {
-          const raw = localStorage.getItem(LS_RECORDS);
+          const raw = TDG_STORAGE.getItem(LS_RECORDS);
           const list = raw ? JSON.parse(raw) : [];
           return Array.isArray(list) ? list : [];
         } catch {
@@ -701,12 +697,12 @@
       }
 
       function saveLocalRecords(list) {
-        localStorage.setItem(LS_RECORDS, JSON.stringify(list));
+        TDG_STORAGE.setItem(LS_RECORDS, JSON.stringify(list));
       }
 
       function loadPending() {
         try {
-          const raw = localStorage.getItem(LS_PENDING_SYNC);
+          const raw = TDG_STORAGE.getItem(LS_PENDING_SYNC);
           const list = raw ? JSON.parse(raw) : [];
           return Array.isArray(list) ? list : [];
         } catch {
@@ -725,6 +721,7 @@
       function mapSupabaseRecordToLocalShape(r) {
         return {
           remoteId: r.id,
+          ownerId:r.owner_id,serverUpdatedAt:r.updated_at,
           clientRecordId: r.client_record_id,
           driverNumber: r.driver_number || "",
           driverName: r.driver_name || "",
@@ -755,7 +752,7 @@
         const sess = window.TDG_AUTH?.getSession?.();
         if (!sess?.userId) throw new Error("No login session");
 
-        const { data, error } = await sb
+        const { data, error } = await TDG_CORE.paged(sb
           .from("tdg_records")
           .select(`
             id,
@@ -779,11 +776,11 @@
             delivered_volume,
             notes,
             raw,
-            created_at
+            created_at,updated_at
           `)
           .eq("owner_id", sess.userId)
           .eq("work_date", tdgToday())
-          .order("completed_at", { ascending: false });
+          .order("completed_at", { ascending: false }));
 
         if (error) throw error;
 
@@ -1043,7 +1040,7 @@
             const route = escapeHtml(r.route);
             const editButton = isReload || isAdjustment
               ? ""
-              : `<button class="btn secondary edit-record-btn" type="button" data-act="edit" data-idx="${r.__rawIndex}" aria-label="Edit delivered volume and notes"><span class="edit-icon" aria-hidden="true">✎</span>Edit</button>`;
+              : `<button class="btn secondary edit-record-btn" type="button" data-act="edit" data-idx="${r.__rawIndex}" data-record-id="${escapeHtml(r.remoteId||r.clientRecordId||"")}" aria-label="Edit delivered volume and notes"><span class="edit-icon" aria-hidden="true">✎</span>Edit</button>`;
 
             return `
               <tr class="${isReload ? "reload-row" : isAdjustment ? "adjustment-row" : ""}">
@@ -1059,7 +1056,7 @@
                 <td>
                   <div class="action-group">
                     ${editButton}
-                    <button class="btn warn" type="button" data-act="del" data-idx="${r.__rawIndex}">Delete</button>
+                    <button class="btn warn" type="button" data-act="del" data-idx="${r.__rawIndex}" data-record-id="${escapeHtml(r.remoteId||r.clientRecordId||"")}">Delete</button>
                   </div>
                 </td>
               </tr>
@@ -1069,113 +1066,11 @@
       }
 
       function exportPdf() {
-        const list = loadLocalRecords();
-        if (!list.length) return alert("No records to export.");
-
-        const sess = window.TDG_AUTH?.getSession?.() || {};
-        const dateIso = new Date().toISOString();
-
-        let shiftStart = "";
-        let shiftFinish = "";
-        let tdgStartVolume = "";
-        let startKm = "";
-        let endKm = "";
-        let totalKm = "";
-
-        try {
-          const draft = JSON.parse(
-            localStorage.getItem("tdg_draft_v3") || "null",
-          );
-          if (draft) {
-            if (draft.startKm != null && draft.startKm !== "") {
-              startKm = String(draft.startKm);
-            }
-            if (draft.endKm != null && draft.endKm !== "") {
-              endKm = String(draft.endKm);
-            }
-          }
-        } catch {}
-
-        if (startKm !== "" && endKm !== "") {
-          const t = Number(endKm) - Number(startKm);
-          totalKm = Number.isFinite(t) ? String(t) : "";
-        }
-
-        let idx = null;
-        try {
-          idx = JSON.parse(
-            sessionStorage.getItem("tdg_index_state_v2") ||
-              sessionStorage.getItem("tdg_index_state_v1") ||
-              "null",
-          );
-        } catch {}
-
-        const normStr = (v) => (v == null ? "" : String(v).trim());
-        const normKm = (v) => {
-          if (v == null) return "";
-          if (typeof v === "number") return v === 0 ? "" : String(v);
-          const s = String(v).trim();
-          return s === "0" ? "" : s;
-        };
-
-        if (idx && typeof idx === "object") {
-          const tv = normStr(idx.tdgVolume);
-          if (tv) tdgStartVolume = tv;
-
-          const vno = normStr(idx.vehicleNo);
-          if (vno) sess.vehicleNo = vno;
-
-          const sk = normKm(idx.startKm);
-          const ek = normKm(idx.endKm);
-          const tk = normKm(idx.totalKm);
-
-          if (sk !== "") startKm = sk;
-          if (ek !== "") endKm = ek;
-          if ((!totalKm || totalKm === "") && tk !== "") totalKm = tk;
-
-          const ss = normStr(idx.shiftTimeStart || idx.shiftStart);
-          const sf = normStr(idx.shiftTimeFinish || idx.shiftFinish);
-          if (ss) shiftStart = ss;
-          if (sf) shiftFinish = sf;
-        }
-
-        if (!shiftStart) {
-          const times = list
-            .map(
-              (r) =>
-                r.completedAt ||
-                r.arrivalTime ||
-                r.updatedAt ||
-                r.createdAt ||
-                "",
-            )
-            .filter(Boolean)
-            .sort();
-          shiftStart = times[0] ? formatLocalTime(times[0]) : "";
-        }
-
-        const payload = {
-          header: {
-            dateIso,
-            date: formatLocalDate(new Date()),
-            vehicleNo: sess.vehicleNo || "",
-            startKm,
-            endKm,
-            totalKm,
-            shiftStart,
-            shiftFinish,
-            tdgStartVolume,
-            driverName: sess.displayName || sess.username || "",
-            consignorPrint: sess.displayName || sess.username || "",
-            signature: "",
-          },
-          records: list,
-        };
-
-        localStorage.setItem("tdg_export_payload_v1", JSON.stringify(payload));
-        window.open("./export_tdg_print_optimized.html", "_blank");
+        const list=loadLocalRecords();if(!list.length)return alert('No records to export.');
+        const ownerId=TDG_AUTH.getSession()?.userId;
+        const groups=[...new Map(list.map(r=>{const date=r.date||r.work_date,vehicleNo=r.vehicleNo||r.vehicle_no||'';return [`${date}|${vehicleNo}`,{ownerId,date,vehicleNo}]})).values()];
+        TDG_STORAGE.setItem('tdg_batch_tdg_selection_v1',JSON.stringify({groups}));window.open('./batch_tdg_print.html','_blank');
       }
-
 
       function toDateTimeLocalValue(value) {
         const d = toLocalDateObj(value);
@@ -1251,6 +1146,7 @@
         return {
           delivered_volume: record.deliveredVolume,
           notes: record.notes || "",
+          raw:{...(record.raw||{}),deliveredVolume:record.deliveredVolume,notes:record.notes||""},
         };
       }
 
@@ -1264,6 +1160,8 @@
           .update(buildRecordUpdatePayload(record))
           .eq("owner_id", sess.userId);
 
+        if(!record.serverUpdatedAt)throw new Error("Refresh before editing");
+        query=query.eq("updated_at",record.serverUpdatedAt);
         if (record.remoteId) {
           query = query.eq("id", record.remoteId);
         } else if (record.clientRecordId) {
@@ -1297,12 +1195,10 @@
           updated.clientRecordId =
             remote.client_record_id || updated.clientRecordId;
 
+          updated.serverUpdatedAt=remote.updated_at;
           const list = loadLocalRecords();
           const rawIndex = Number($("editRawIndex").value);
-          const matchIndex =
-            rawIndex >= 0 && rawIndex < list.length
-              ? rawIndex
-              : list.findIndex(
+          const matchIndex = list.findIndex(
                   (item) =>
                     (updated.remoteId && item.remoteId === updated.remoteId) ||
                     (updated.clientRecordId &&
@@ -1347,8 +1243,9 @@
           q = q.eq("client_record_id", record.clientRecordId);
         }
 
-        const { error } = await q;
-        if (error) throw error;
+        if(!record.serverUpdatedAt)throw new Error("Refresh before deleting");
+        const {data,error}=await q.eq("updated_at",record.serverUpdatedAt).select("id");
+        if(error)throw error;if(!data?.length)throw new Error("Record changed/deleted or access denied");
 
         return { ok: true };
       }
@@ -1411,10 +1308,10 @@ if (!sess) return;
 
             if (error) throw error;
           } catch (e) {
-            console.warn("Remote clear failed, continue clearing local only:", e);
+            alert("Clear failed; local records retained: "+e.message);return;
           }
 
-          localStorage.removeItem(LS_RECORDS);
+          TDG_STORAGE.removeItem(LS_RECORDS);
           page = 1;
           render();
           alert("已清空。");
@@ -1477,7 +1374,8 @@ if (!sess) return;
             return;
           }
 
-          const r = list[rawIndex];
+          const r=list.find(x=>(x.remoteId||x.clientRecordId)===b.getAttribute("data-record-id"));
+          if(!r){alert("Refresh records first");return;}
 
           if (act === "edit") {
             openEditModal(r, rawIndex);
@@ -1497,8 +1395,7 @@ if (!sess) return;
             return;
           }
 
-          list.splice(rawIndex, 1);
-          saveLocalRecords(list);
+          saveLocalRecords(loadLocalRecords().filter(x=>(x.remoteId||x.clientRecordId)!==(r.remoteId||r.clientRecordId)));
           refreshListAfterDelete();
         });
 

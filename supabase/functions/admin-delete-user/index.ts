@@ -1,0 +1,2 @@
+import {serve,identity,json,clean,withAccountOperation} from '../_shared/auth.js';
+serve(async(req:Request)=>{const {admin,caller}=await identity(req),body=await req.json(),id=clean(body.id);if(id===caller.id)throw new Error('Cannot deactivate current account');return withAccountOperation(admin,id,async()=>{const r=await admin.from('tdg_profiles').update({is_active:false}).eq('id',id).select('*').single();if(r.error)throw new Error(r.error.message);return json({ok:true,deactivatedUserId:id,user:r.data});});});

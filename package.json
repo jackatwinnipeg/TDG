@@ -1,0 +1,11 @@
+{
+  "name": "tdg-route-repair-verification",
+  "private": true,
+  "scripts": {
+    "test": "node tests/core.cjs && node tests/database.cjs && node --experimental-vm-modules tests/edge.cjs && node tests/browser.cjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
+    "playwright": "1.62.1"
+  }
+}

@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="zh-CN">
   <head>
+<script src="./js/tdg_core.js"></script><script src="./js/tdg_volume.js"></script>
     <meta charset="utf-8" />
     <meta
       name="viewport"
@@ -466,7 +467,7 @@
     if (!acct) return [];
 
     const sb = getSupabaseClientStrict();
-    const { data, error } = await sb
+    const { data, error } = await TDG_CORE.paged(sb
       .from("tdg_records")
       .select(`
         id,
@@ -493,7 +494,7 @@
         created_at
       `)
       .eq("account_number", acct)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false }));
 
     if (error) {
       console.error("loadRelatedRecordsFromSupabase error:", error);
@@ -556,7 +557,7 @@
 
   function loadRecords() {
     try {
-      const raw = localStorage.getItem(LS_RECORDS) || "[]";
+      const raw = TDG_STORAGE.getItem(LS_RECORDS) || "[]";
       const arr = JSON.parse(raw);
       return Array.isArray(arr) ? arr : [];
     } catch {
@@ -566,7 +567,7 @@
 
   function loadSelectedRecordFromLocal() {
     try {
-      const raw = localStorage.getItem(LS_HISTORY_VIEW);
+      const raw = TDG_STORAGE.getItem(LS_HISTORY_VIEW);
       if (raw) {
         const obj = JSON.parse(raw);
         if (obj && typeof obj === "object") return obj;
@@ -574,7 +575,7 @@
     } catch {}
 
     try {
-      const idxRaw = localStorage.getItem(LS_HISTORY_VIEW_INDEX);
+      const idxRaw = TDG_STORAGE.getItem(LS_HISTORY_VIEW_INDEX);
       if (idxRaw != null && idxRaw !== "") {
         const list = loadRecords();
         const idx = Number(idxRaw);
@@ -747,7 +748,7 @@
     $("kpiDate").textContent = arrivalDateText;
     $("kpiDriverName").textContent = fmt(r.driverName);
     $("kpiVehicleNo").textContent = fmt(r.vehicleNo);
-    $("kpiDelivered").textContent = String(delivered);
+    $("kpiDelivered").textContent=TDG_VOLUME.isReloadRecord(r)?`Reload +${TDG_VOLUME.getReloadAmountKg(r)} kg`:TDG_VOLUME.isAdjustmentRecord(r)?`Adjustment -${TDG_VOLUME.getAdjustmentAmountLbs(r)} lbs`:String(delivered);
     $("kpiArrival").textContent = arrivalTimeText;
 
     $("vAccountNumber").textContent = fmt(r.accountNumber);
@@ -764,7 +765,7 @@
   }
 
   function openFillLog(r) {
-    localStorage.setItem(LS_FILL_LOG_RECORD, JSON.stringify(r));
+    TDG_STORAGE.setItem(LS_FILL_LOG_RECORD, JSON.stringify(r));
     window.open("./fill_log.html", "_blank");
   }
 
@@ -786,7 +787,7 @@
       }
     }
 
-    if (!record) {
+    if (!record && !recordId) {
       record = loadSelectedRecordFromLocal();
     }
 
