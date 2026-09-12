@@ -1,3 +1,3 @@
 # 安全状态
 
-请阅读 FIX_STATUS.md。旧报告已被本次逐项状态取代；生产权限与后台补丁尚未部署。
+数据库与后台函数部署记录见 DEPLOYMENT_STATUS.md，逐项修复说明见 FIX_STATUS.md。

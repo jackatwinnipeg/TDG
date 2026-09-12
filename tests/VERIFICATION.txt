@@ -68,3 +68,5 @@ node tests/browser.cjs
 Exit 1
 Browser retry after bundled Chromium extraction: exit 0. PASS multi-vehicle batch off-duty, single Daily Log/end km/XSS, shared Fill Log metadata; no browser runtime errors.
 Live schema dry-run was BLOCKED by automatic approval review; no production SQL executed.
+
+2026-09-12 deployment follow-up: real-schema local reconstruction PASS; formal production migration SUCCESS; six Edge functions ACTIVE and live anonymous/invalid-credential checks HTTP 401; existing data counts unchanged.

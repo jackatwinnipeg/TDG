@@ -1,3 +1,7 @@
+# 当前部署记录优先
+
+本文件下方为原修复包说明。2026-09-12 已执行数据库及后台函数升级，请以 DEPLOYMENT_STATUS.md 为准；不要重复运行旧补丁。
+
 # TDG Route 修复候选包
 
 源码以原始 TDG-main.zip 为基础。请先阅读 FIX_STATUS.md 和 tests/VERIFICATION.txt。

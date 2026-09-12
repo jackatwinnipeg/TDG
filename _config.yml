@@ -11,3 +11,4 @@ exclude:
   - FIX_STATUS.md
   - AUTH_SECURITY_FIX_REPORT.md
   - DEPLOYMENT_STATUS.md
+  - deployment
