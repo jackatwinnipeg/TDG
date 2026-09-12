@@ -1,0 +1,72 @@
+Upgrade verification 2026-09-12; isolated fixtures
+
+node tests/core.cjs
+PASS browser scripts parse
+PASS off-duty shift table overrides empty records
+PASS off-duty final form fallback
+PASS off-duty payload.shift fallback
+PASS off-duty raw nonempty fallback
+PASS zero odometer preserved
+PASS account cache isolation
+PASS HTML escaping
+PASS pagination handles 1073 rows with 127 server cap
+PASS pagination errors do not return partial success
+PASS CSV quoted commas and newlines
+PASS invalid CSV rejected
+PASS DST and backwards calendar weeks
+PASS reverse odometer blocks off-duty
+PASS exact kg balance retained
+PASS lost response retains durable outbox
+PASS retry neither duplicates nor overwrites
+PASS remote edit cannot be overwritten by old upload
+PASS negative delivery cannot upload
+PASS quota failure prevents network write
+PASS failed sync prevents off-duty completion
+21 core/queue scenarios passed
+
+Exit 0
+node tests/database.cjs
+PASS SQL executes against isolated PostgreSQL
+PASS self promotion blocked
+PASS active driver insert
+PASS negative delivery blocked
+PASS immutable vehicle
+PASS viewer writes blocked
+PASS inactive writes blocked
+PASS inactive reads blocked
+PASS last admin protected
+PASS history cascade blocked
+PASS Auth/profile email mirror
+PASS business audit trail
+PASS driver cannot write shared fill metadata
+PASS duplicate customer metadata blocked
+PASS anonymous profile lookup blocked
+PASS login throttle
+PASS account operation mutual exclusion
+PASS required password change blocks business reads
+
+Exit 0
+node --experimental-vm-modules tests/edge.cjs
+(node:28) ExperimentalWarning: VM Modules is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS admin-create-user authorization gates
+PASS admin-update-user authorization gates
+PASS admin-reset-password authorization gates
+PASS admin-delete-user authorization gates
+PASS create honors isActive=false without logging credentials
+PASS account operations exclude overlap and release on failure
+
+Exit 0
+node tests/browser.cjs
+[Error: EINVAL: invalid argument, chown '/tmp/fonts'] {
+  errno: -22,
+  code: 'EINVAL',
+  syscall: 'chown',
+  path: '/tmp/fonts'
+}
+
+Exit 1
+Browser retry after bundled Chromium extraction: exit 0. PASS multi-vehicle batch off-duty, single Daily Log/end km/XSS, shared Fill Log metadata; no browser runtime errors.
+Live schema dry-run was BLOCKED by automatic approval review; no production SQL executed.
+
+2026-09-12 deployment follow-up: real-schema local reconstruction PASS; formal production migration SUCCESS; six Edge functions ACTIVE and live anonymous/invalid-credential checks HTTP 401; existing data counts unchanged.

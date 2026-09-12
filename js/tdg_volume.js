@@ -2,7 +2,7 @@
  * Shared TDG volume rules.
  *
  * Business reset:
- * - Trucks 82112 and 82303 start at 0 kg on 2026-08-10.
+ * - Trucks 82112 and 82303 start at 0 kg on 2026-08-09.
  * - Records before that date never contribute Reload volume.
  * - From the reset date onward, only records explicitly saved with
  *   eventType = "reload" are treated as Reload events. Account 003 and

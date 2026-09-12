@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="zh-CN">
   <head>
+<script src="./js/tdg_core.js?v=20260912"></script>
     <meta charset="utf-8" />
     <meta
       name="viewport"
@@ -550,11 +551,11 @@
       </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="./js/supabaseConfig.js"></script>
-    <script src="./js/supabaseClient.js"></script>
-    <script src="./js/auth_supabase.js"></script>
-    <script src="./js/tdg_volume.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0"></script>
+    <script src="./js/supabaseConfig.js?v=20260912"></script>
+    <script src="./js/supabaseClient.js?v=20260912"></script>
+    <script src="./js/auth_supabase.js?v=20260912"></script>
+    <script src="./js/tdg_volume.js?v=20260912"></script>
 
     <script>
       const $ = (id) => document.getElementById(id);
@@ -647,7 +648,7 @@
       async function loadRecordsFromSupabase() {
         const sb = getSupabaseClientStrict();
 
-        const { data, error } = await sb
+        const { data, error } = await TDG_CORE.paged(sb
           .from("tdg_records")
           .select(`
             id,
@@ -673,7 +674,7 @@
             raw,
             created_at
           `)
-          .order("created_at", { ascending: false });
+          .order("created_at", { ascending: false }));
 
         if (error) {
           console.error("loadRecordsFromSupabase error:", error);
@@ -825,8 +826,8 @@
       }
 
       function openDetail(record) {
-        localStorage.setItem(LS_HISTORY_VIEW, JSON.stringify(record));
-        localStorage.removeItem(LS_HISTORY_VIEW_INDEX);
+        TDG_STORAGE.setItem(LS_HISTORY_VIEW, JSON.stringify(record));
+        TDG_STORAGE.removeItem(LS_HISTORY_VIEW_INDEX);
 
         const url = record?.remoteId
           ? `./history_detail.html?id=${encodeURIComponent(record.remoteId)}`
@@ -1413,7 +1414,7 @@
             })),
           };
 
-          localStorage.setItem(
+          TDG_STORAGE.setItem(
             LS_BATCH_FILL_SELECTION,
             JSON.stringify(payload)
           );
@@ -1436,7 +1437,7 @@
           })),
         };
 
-        localStorage.setItem(
+        TDG_STORAGE.setItem(
           LS_BATCH_TDG_SELECTION,
           JSON.stringify(payload)
         );

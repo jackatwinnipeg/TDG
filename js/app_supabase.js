@@ -161,17 +161,17 @@ function getYesterdayKey(driverKey) {
 function migrateLegacyYesterdayIfAny(driverKey) {
   try {
     const perKey = getYesterdayKey(driverKey);
-    if (localStorage.getItem(perKey)) return;
-    const legacy = localStorage.getItem(LS_YESTERDAY_LEGACY);
+    if (TDG_STORAGE.getItem(perKey)) return;
+    const legacy = TDG_STORAGE.getItem(LS_YESTERDAY_LEGACY);
     if (!legacy) return;
-    localStorage.setItem(perKey, legacy);
+    TDG_STORAGE.setItem(perKey, legacy);
   } catch {}
 }
 
 function loadYesterdayForDriver(driverKey) {
   try {
     const k = getYesterdayKey(driverKey);
-    const raw = localStorage.getItem(k);
+    const raw = TDG_STORAGE.getItem(k);
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
@@ -181,7 +181,7 @@ function loadYesterdayForDriver(driverKey) {
 function saveYesterdayForDriver(driverKey, data) {
   try {
     const k = getYesterdayKey(driverKey);
-    localStorage.setItem(k, JSON.stringify(data));
+    TDG_STORAGE.setItem(k, JSON.stringify(data));
   } catch {}
 }
 
@@ -190,13 +190,13 @@ function saveYesterdayForDriver(driverKey, data) {
 // ---------------------------
 function getCustomers() {
   try {
-    const raw = localStorage.getItem(LS_CUSTOMERS);
+    const raw = TDG_STORAGE.getItem(LS_CUSTOMERS);
     if (raw) return JSON.parse(raw);
 
-    const old = localStorage.getItem(LS_CUSTOMERS_FALLBACK);
+    const old = TDG_STORAGE.getItem(LS_CUSTOMERS_FALLBACK);
     if (old) {
       const list = JSON.parse(old);
-      localStorage.setItem(LS_CUSTOMERS, JSON.stringify(list));
+      TDG_STORAGE.setItem(LS_CUSTOMERS, JSON.stringify(list));
       return list;
     }
     return [];
@@ -230,7 +230,7 @@ async function syncCustomersFromServer({ silent = true } = {}) {
       return { ok: false, reason: "no_session" };
     }
 
-    const { data, error } = await sb
+    const { data, error } = await TDG_CORE.paged(sb
       .from("tdg_customers")
       .select(`
         account_number,
@@ -241,7 +241,7 @@ async function syncCustomersFromServer({ silent = true } = {}) {
         created_at,
         updated_at
       `)
-      .order("account_number", { ascending: true });
+      .order("account_number", { ascending: true }));
 
     if (error) {
       console.warn("syncCustomersFromServer:select failed:", error);
@@ -260,9 +260,7 @@ async function syncCustomersFromServer({ silent = true } = {}) {
       updatedAt: row.updated_at || null,
     }));
 
-    if (list.length) {
-      localStorage.setItem(LS_CUSTOMERS, JSON.stringify(list));
-    }
+    TDG_STORAGE.setItem(LS_CUSTOMERS, JSON.stringify(list));
 
     console.log("TDG customers synced from Supabase:", list.length, list.slice(0, 5));
 
@@ -285,7 +283,7 @@ async function syncCustomersFromServer({ silent = true } = {}) {
 
 function getRecords() {
   try {
-    return JSON.parse(localStorage.getItem(LS_RECORDS) || "[]");
+    return JSON.parse(TDG_STORAGE.getItem(LS_RECORDS) || "[]");
   } catch {
     return [];
   }
@@ -293,8 +291,8 @@ function getRecords() {
 
 function setRecords(list) {
   try {
-    localStorage.setItem(LS_RECORDS, JSON.stringify(Array.isArray(list) ? list : []));
-  } catch {}
+    TDG_STORAGE.setItem(LS_RECORDS, JSON.stringify(Array.isArray(list) ? list : []));
+  } catch(error){throw new Error("Local records could not be saved: "+error.message);}
 
   refreshDisplayedTdgVolume(list);
 }
@@ -412,12 +410,12 @@ function refreshDisplayedTdgVolume(records = getRecords()) {
 
   const balance = computeCurrentTdgBalance(records);
   input.value = String(balance.remainingKg);
-  input.dataset.startingKg = String(balance.baseTdgKg);
+  input.dataset.startingKg = String(balance.baseKg);
   input.dataset.reloadKg = String(balance.totalReloadKg);
   input.dataset.deliveredLbs = String(balance.totalDeliveredLbs);
   input.dataset.adjustmentLbs = String(balance.totalAdjustmentLbs);
   input.title =
-    `Start ${balance.baseTdgKg} kg + Reload ${balance.totalReloadKg} kg ` +
+    `Start ${balance.baseKg} kg + Reload ${balance.totalReloadKg} kg ` +
     `− Delivered ${balance.totalDeliveredLbs} lbs ` +
     `− Adjustment ${balance.totalAdjustmentLbs} lbs = ${balance.remainingKg} kg`;
 
@@ -477,7 +475,7 @@ function seedDemoCustomers(force = false) {
     },
   ];
 
-  localStorage.setItem(LS_CUSTOMERS, JSON.stringify(customers));
+  TDG_STORAGE.setItem(LS_CUSTOMERS, JSON.stringify(customers));
   toast("已加载", "演示客户库已写入本地。");
   renderResults([]);
 }
@@ -515,7 +513,7 @@ function getFormData() {
     // Keep the database calculation baseline separate from the live display.
     tdgVolume: startingTdgVolume,
     tdgStartVolume: startingTdgVolume,
-    currentTdgVolume: currentTdgBalance.remainingKg,
+    currentTdgVolume: currentTdgBalance.remainingExactKg,
     weekCycle: Number($("weekCycle")?.value || 1),
     shiftTimeStart: shiftStart,
     shiftTimeFinish: shiftFinish,
@@ -603,12 +601,13 @@ function getWeekStartMonday(date = new Date()) {
 
 function diffWeeks(fromDate, toDate) {
   const msPerWeek = 7 * 24 * 60 * 60 * 1000;
-  return Math.floor((toDate - fromDate) / msPerWeek);
+  const day=d=>Date.UTC(d.getFullYear(),d.getMonth(),d.getDate());
+  return Math.floor((day(toDate)-day(fromDate))/msPerWeek);
 }
 
 function getCachedWeekCycleAnchor() {
   try {
-    const raw = localStorage.getItem(LS_CYCLE_CACHE);
+    const raw = TDG_STORAGE.getItem(LS_CYCLE_CACHE);
     if (!raw) return null;
     const data = JSON.parse(raw);
     const cycle = Number(data?.cycle);
@@ -621,7 +620,7 @@ function getCachedWeekCycleAnchor() {
 }
 
 function setCachedWeekCycleAnchor(cycle, weekStart) {
-  localStorage.setItem(
+  TDG_STORAGE.setItem(
     LS_CYCLE_CACHE,
     JSON.stringify({
       cycle: Number(cycle),
@@ -635,8 +634,7 @@ function computeWeekCycleFromAnchor(anchor, now = new Date()) {
   if (!anchor?.weekStart || !(anchor?.cycle >= 1 && anchor?.cycle <= 8)) return 1;
   const currentWeekStart = getWeekStartMonday(now);
   const weeks = diffWeeks(anchor.weekStart, currentWeekStart);
-  const normalizedWeeks = Math.max(0, weeks);
-  return ((anchor.cycle - 1 + normalizedWeeks) % 8) + 1;
+  return (((anchor.cycle-1+weeks)%8+8)%8)+1;
 }
 
 async function fetchWeekCycleAnchorFromSupabase() {
@@ -708,7 +706,7 @@ async function loadWeekCycle() {
     setCachedWeekCycleAnchor(anchor.cycle, anchor.weekStart);
   }
 
-  const cycle = computeWeekCycleFromAnchor(anchor, new Date());
+  const cycle=computeWeekCycleFromAnchor(anchor,parseLocalDate(tdgToday()));
   weekCycle.value = String(cycle);
   return cycle;
 }
@@ -716,16 +714,9 @@ async function loadWeekCycle() {
 // ---------------------------
 // Profile / user info (Supabase master)
 // ---------------------------
-function ensureDemoProfile() {
-  if (localStorage.getItem(LS_PROFILE)) return;
-  localStorage.setItem(
-    LS_PROFILE,
-    JSON.stringify({
-      driverNumber: "D-001",
-      driverName: "Driver Demo",
-      vehicleNo: "VH-102",
-    }),
-  );
+function ensureDemoProfile(){
+ const user=TDG_AUTH.getSession();if(!user?.userId)return;
+ TDG_STORAGE.setItem(LS_PROFILE,JSON.stringify({driverNumber:user.driverNumber,driverName:user.displayName,vehicleNo:user.vehicleNo||''}));
 }
 
 async function loadUserProfileFromSupabase() {
@@ -767,7 +758,7 @@ async function syncProfileCacheFromSupabase() {
   if (!profile) return null;
 
   try {
-    localStorage.setItem(
+    TDG_STORAGE.setItem(
       LS_PROFILE,
       JSON.stringify({
         driverNumber: profile.driverNumber || "",
@@ -866,7 +857,8 @@ function loadFromYesterday() {
   }
   try {
     setFormData({
-      ...y,
+      ...getFormData(),
+      accountNumber:y.accountNumber,accountName:y.accountName,accountAddress:y.accountAddress,
       tdgStartVolume:
         y.remainingVolume ?? y.currentTdgVolume ?? y.tdgStartVolume ?? y.tdgVolume,
       deliveredVolume: "",
@@ -986,23 +978,23 @@ async function getAuthTokenSafe() {
   }
 
   return (
-    localStorage.getItem("token") ||
-    localStorage.getItem("access_token") ||
-    localStorage.getItem("jwt") ||
+    TDG_STORAGE.getItem("token") ||
+    TDG_STORAGE.getItem("access_token") ||
+    TDG_STORAGE.getItem("jwt") ||
     ""
   );
 }
 
 function enqueuePendingSync(payload, errorMsg) {
   try {
-    const raw = localStorage.getItem(LS_PENDING_SYNC);
+    const raw = TDG_STORAGE.getItem(LS_PENDING_SYNC);
     const list = raw ? JSON.parse(raw) : [];
     list.push({
       createdAt: tdgLocalDateTimeISO(),
       error: String(errorMsg || "unknown"),
       payload,
     });
-    localStorage.setItem(LS_PENDING_SYNC, JSON.stringify(list));
+    TDG_STORAGE.setItem(LS_PENDING_SYNC, JSON.stringify(list));
   } catch {}
 }
 
@@ -1033,7 +1025,7 @@ function buildDailyPayload(reason) {
       totalAdjustmentLbs: cal.totalAdjustmentLbs,
       totalAdjustmentKg: cal.totalAdjustmentKg,
       totalDelivered: cal.totalDelivered,
-      remaining: cal.remaining,
+      remaining: cal.remainingExactKg,
     },
     form,
     records,
@@ -1109,27 +1101,7 @@ async function backupDailyToServer(reason = "manual") {
     }
   } catch (e) {}
 
-  const endpoints = [
-    "/api/daily-logs",
-    "/api/dailylog",
-    "/api/tdg/daily-logs",
-    "/api/backup/daily",
-    "/api/backup",
-  ];
-
-  for (const url of endpoints) {
-    try {
-      const r = await postJsonWithTimeout(url, payload, {
-        timeoutMs: 9000,
-      });
-      if (r.ok) {
-        return { ok: true, url, response: r.data || r.text || null };
-      }
-    } catch (e) {}
-  }
-
-  enqueuePendingSync(payload, "Supabase + all endpoints failed");
-  return { ok: false };
+  enqueuePendingSync(payload,'Supabase backup failed');return {ok:false};
 }
 
 // ---------------------------
@@ -1180,42 +1152,43 @@ function buildRecordRowForSupabase(rec, ownerId) {
   };
 }
 
-async function syncRecordToSupabase(rec) {
-  const sb = window.supabaseClient;
-  if (!sb?.auth || !sb?.from) {
-    throw new Error("Supabase client not initialized");
-  }
-
-  const { data: userData, error: uErr } = await sb.auth.getUser();
-  if (uErr) throw new Error("读取登录用户失败: " + uErr.message);
-
-  const user = userData?.user;
-  if (!user) throw new Error("Auth session missing");
-
-  if (!rec.clientRecordId) rec.clientRecordId = genClientRecordId();
-
-  const row = buildRecordRowForSupabase(rec, user.id);
-
-  console.log("Uploading tdg_records row:", row);
-
-  const r = await sb
-    .from("tdg_records")
-    .upsert(row, { onConflict: "client_record_id" })
-    .select("id, client_record_id, owner_id, work_date, account_number, account_name, created_at")
-    .single();
-
-  if (r.error) {
-    console.error("syncRecordToSupabase failed:", r.error);
-    throw new Error(r.error.message || "Supabase insert/upsert failed");
-  }
-
-  console.log("tdg_records uploaded:", r.data);
-  return r.data;
+const LS_OUTBOX='tdg_record_outbox_v1';
+function readOutbox(){const rows=JSON.parse(TDG_STORAGE.getItem(LS_OUTBOX)||'[]');if(!Array.isArray(rows))throw new Error('Invalid outbox');return rows;}
+function writeOutbox(rows){TDG_STORAGE.setItem(LS_OUTBOX,JSON.stringify(rows));}
+function operationKey(r){return JSON.stringify([r.date,r.vehicleNo,r.accountNumber,r.arrivalTime,r.eventType||'',r.deliveredVolume,r.reloadAmountKg,r.adjustmentAmountLbs,r.adjustmentReason,r.notes]);}
+async function syncRecordToSupabase(rec){
+ const sb=window.supabaseClient,sess=TDG_AUTH.getSession();if(!sess?.userId||!sb?.auth)throw new Error('Login required');
+ if(rec.ownerId&&rec.ownerId!==sess.userId)throw new Error('Owner mismatch');if(sess.role==='viewer')throw new Error('Viewer cannot create records');
+ const amount=Number(rec.deliveredVolume??rec.delivered_volume??0);if(!Number.isFinite(amount)||amount<0||!rec.vehicleNo)throw new Error('Invalid quantity or vehicle');
+ const pending=readOutbox(),existing=pending.find(r=>r.clientRecordId===rec.clientRecordId||operationKey(r)===operationKey(rec));
+ if(!existing&&pending.length)throw new Error('A pending record must be retried first. Reload to synchronize it.');
+ if(existing)Object.assign(rec,existing);else{rec.clientRecordId ||= genClientRecordId();rec.ownerId=sess.userId;pending.push({...rec});writeOutbox(pending);}
+ const user=await sb.auth.getUser();if(user.error||user.data?.user?.id!==sess.userId)throw new Error('Session changed; pending record retained');
+ const row=buildRecordRowForSupabase(rec,sess.userId);let result=await sb.from('tdg_records').insert(row).select('*').single();
+ if(result.error?.code==='23505'){
+  result=await sb.from('tdg_records').select('*').eq('owner_id',sess.userId).eq('client_record_id',rec.clientRecordId).maybeSingle();
+  if(!result.error&&(!result.data||['work_date','vehicle_no','account_number','notes'].some(k=>String(result.data[k]??'')!==String(row[k]??''))||Number(result.data.delivered_volume)!==Number(row.delivered_volume)||getReloadAmountKg(result.data)!==getReloadAmountKg(row)||getAdjustmentAmountLbs(result.data)!==getAdjustmentAmountLbs(row)))throw new Error('Remote record differs. Refresh; no overwrite performed.');
+ }
+ if(result.error||!result.data)throw new Error(result.error?.message||'Insert not confirmed');
+ if(TDG_AUTH.getSession()?.userId!==sess.userId)throw new Error('Session changed during upload');
+ writeOutbox(readOutbox().filter(r=>r.clientRecordId!==rec.clientRecordId));return result.data;
+}
+async function replayRecordOutbox(){
+ for(const rec of readOutbox())await syncRecordToSupabase(rec);
+ const sb=window.supabaseClient,ownerId=TDG_AUTH.getSession()?.userId;
+ let pending=JSON.parse(TDG_STORAGE.getItem(LS_PENDING_SYNC)||'[]');
+ for(const item of [...pending]){
+  item.id ||= crypto.randomUUID();TDG_STORAGE.setItem(LS_PENDING_SYNC,JSON.stringify(pending));const p=item.payload;
+  const r=await sb.from('tdg_daily_logs').insert({id:item.id,owner_id:ownerId,log_date:p.date,vehicle_no:p.vehicleNo,driver_employee_number:p.driver?.employeeNumber||'',driver_name:p.driver?.driverName||'',payload:{...p,meta:{...p.meta,skip_expand:true}}});
+  if(r.error?.code==='23505'){const check=await sb.from('tdg_daily_logs').select('id').eq('id',item.id).eq('owner_id',ownerId).single();if(check.error)throw check.error;}else if(r.error)throw r.error;
+  pending=pending.filter(x=>x.id!==item.id);TDG_STORAGE.setItem(LS_PENDING_SYNC,JSON.stringify(pending));
+ }
 }
 
 async function syncAllLocalRecordsToSupabase() {
   const list = getRecords();
   for (const rec of list) {
+    if(rec.synced)continue;
     try {
       await syncRecordToSupabase(rec);
       rec.synced = true;
@@ -1226,6 +1199,7 @@ async function syncAllLocalRecordsToSupabase() {
     }
   }
   setRecords(list);
+  if(list.some(r=>!r.synced))throw new Error("Some records failed to sync; local data retained");
   return list;
 }
 
@@ -1241,7 +1215,12 @@ async function uploadFinalDailyLogAndOffDuty(reason = "off_duty") {
   const payload = buildDailyPayload(reason);
   payload.meta = { ...(payload.meta || {}), skip_expand: true };
 
+  const snapshotKey=`tdg_final_snapshot:${payload.date}:${payload.vehicleNo}`;
+  const fingerprint=p=>JSON.stringify({form:{...p.form,updatedAt:undefined},shift:p.shift,records:p.records});
+  let snapshot=JSON.parse(TDG_STORAGE.getItem(snapshotKey)||'null');
+  if(!snapshot||fingerprint(snapshot.payload)!==fingerprint(payload)){snapshot={id:crypto.randomUUID(),payload};TDG_STORAGE.setItem(snapshotKey,JSON.stringify(snapshot));}
   const row = {
+    id:snapshot.id,
     owner_id: user.id,
     log_date: payload.date || null,
     driver_employee_number: payload?.driver?.employeeNumber || "",
@@ -1252,9 +1231,9 @@ async function uploadFinalDailyLogAndOffDuty(reason = "off_duty") {
     payload,
   };
 
-  const ins = await sb.from("tdg_daily_logs").insert(row).select("id").single();
-  if (ins.error) throw ins.error;
-  return ins;
+  const ins=await sb.from('tdg_daily_logs').insert({...row,payload:snapshot.payload}).select('id').single();
+  if(ins.error?.code==='23505'){const check=await sb.from('tdg_daily_logs').select('id').eq('id',snapshot.id).eq('owner_id',user.id).single();if(check.error)throw check.error;}else if(ins.error)throw ins.error;
+  TDG_STORAGE.removeItem(snapshotKey);return ins;
 }
 
 function validateOffDutyRequiredFields() {
@@ -1263,7 +1242,8 @@ function validateOffDutyRequiredFields() {
 
   const rawStartKm = String(startKmInput?.value ?? "").trim();
   const rawEndKm = String(endKmInput?.value ?? "").trim();
-  const checkOutTime = String(shiftFinish || "").trim();
+  const checkOutTime=String(shiftFinish||"").trim();
+  if(currentShiftSession&&(currentShiftSession.workDate!==tdgToday()||TDG_VOLUME.normalizeVehicleNo(currentShiftSession.vehicleNo)!==currentTdgVehicleNo())){toast("Cannot go Off Duty","Check-out belongs to another date or vehicle");return {ok:false,reason:"shift_context_mismatch"};}
 
   if (!rawStartKm) {
     toast("Cannot go Off Duty", "Start KM is required.");
@@ -1303,6 +1283,7 @@ function validateOffDutyRequiredFields() {
     };
   }
 
+  if(endKm<startKm){toast("Cannot go Off Duty","End KM must be at least Start KM");return {ok:false,reason:"odometer_reversed"};}
   if (!checkOutTime) {
     toast(
       "Cannot go Off Duty",
@@ -1345,7 +1326,10 @@ async function logoutFlow() {
   try {
     toast("同步中…", "正在把本地记录逐条同步到云端数据库（可离线重试）。");
 
+    await replayRecordOutbox();
     await syncAllLocalRecordsToSupabase();
+    await pullTodayRecordsFromSupabase();
+    if(!validateOffDutyRequiredFields().ok)throw new Error("Off Duty fields changed");
 
     toast("上传汇总…", "正在上传当日最终汇总（Daily Log）。");
     await uploadFinalDailyLogAndOffDuty("off_duty");
@@ -1353,15 +1337,15 @@ async function logoutFlow() {
     toast("完成", "已完成同步与汇总上传，正在退出…");
 
     try {
-      localStorage.removeItem(LS_RECORDS);
-      localStorage.removeItem(LS_DRAFT);
+      TDG_STORAGE.removeItem(LS_RECORDS);
+      TDG_STORAGE.removeItem(LS_DRAFT);
     } catch {}
 
     try {
-      await window.supabaseClient?.auth?.signOut?.();
+      TDG_SESSION_STORAGE.removeItem(SS_INDEX_STATE);
     } catch {}
     try {
-      window.TDG_AUTH?.logout?.();
+      await window.TDG_AUTH?.logout?.();
       return;
     } catch {}
 
@@ -1467,6 +1451,7 @@ async function getReloadLocationCustomer() {
 }
 
 async function saveReloadEvent() {
+  if(window.__TDG_OPENING_READY===false){toast("Please refresh","Opening balance is not loaded for this vehicle/date.");return;}
   if (window.__savingReload) return;
 
   const button = $("btnReloadConfirm");
@@ -1528,6 +1513,7 @@ async function saveReloadEvent() {
     };
 
     const remoteRow = await syncRecordToSupabase(event);
+    if(event.date!==tdgToday()||TDG_VOLUME.normalizeVehicleNo(event.vehicleNo)!==currentTdgVehicleNo()){toast("Saved","Saved for the original date and vehicle. Refresh this context.");return;}
     const records = getRecords();
 
     records.push({
@@ -1583,7 +1569,7 @@ function openTdgAdjustmentModal() {
 
   const balance = computeCurrentTdgBalance();
   const currentLbs = Math.max(0, integerPart(balance.remainingLbs));
-  const currentKg = Math.max(0, integerPart(balance.remainingExactKg));
+  const currentKg = Math.max(0,balance.remainingExactKg);
 
   setTdgAdjustmentError("");
 
@@ -1626,6 +1612,7 @@ function closeTdgAdjustmentModal() {
 }
 
 async function saveTdgAdjustmentEvent() {
+  if(window.__TDG_OPENING_READY===false){toast("Please refresh","Opening balance is not loaded for this vehicle/date.");return;}
   if (window.__savingTdgAdjustment) return;
 
   const button = $("btnTdgAdjustmentConfirm");
@@ -1712,6 +1699,7 @@ async function saveTdgAdjustmentEvent() {
 
   try {
     const remoteRow = await syncRecordToSupabase(event);
+    if(event.date!==tdgToday()||TDG_VOLUME.normalizeVehicleNo(event.vehicleNo)!==currentTdgVehicleNo()){toast("Saved","Saved for the original date and vehicle. Refresh this context.");return;}
     const records = getRecords();
 
     records.push({
@@ -1870,7 +1858,9 @@ async function restoreCheckInFromSupabase({
   silent = false,
 } = {}) {
   try {
-    const session = await fetchShiftSessionFromSupabase(workDate);
+    const ownerId=getAuthSessionSafe()?.userId;
+    const session=await fetchShiftSessionFromSupabase(workDate);
+    if(getShiftWorkDate()!==workDate||getAuthSessionSafe()?.userId!==ownerId)return null;
 
     if (!session) {
       if (currentShiftSession?.workDate !== workDate) {
@@ -1918,16 +1908,14 @@ async function persistCheckInToSupabase(candidate) {
     start_km: candidate.startKm,
     check_in_at: candidate.checkInAt,
     check_in_time: candidate.checkInTime,
-    check_out_at: null,
-    check_out_time: null,
+    check_out_at:currentShiftSession?.workDate===candidate.workDate&&currentShiftSession.vehicleNo===candidate.vehicleNo?currentShiftSession.checkOutAt||null:null,
+    check_out_time:currentShiftSession?.workDate===candidate.workDate&&currentShiftSession.vehicleNo===candidate.vehicleNo?currentShiftSession.checkOutTime||null:null,
     updated_at: tdgLocalDateTimeISO(),
   };
 
-  const { data, error } = await sb
-    .from("tdg_shift_sessions")
-    .upsert(row, {
-      onConflict: "owner_id,work_date",
-    })
+  const existing=currentShiftSession?.workDate===candidate.workDate?currentShiftSession:null;
+  const command=existing?sb.from('tdg_shift_sessions').update(row).eq('owner_id',sess.userId).eq('work_date',candidate.workDate).eq('updated_at',existing.updatedAt):sb.from('tdg_shift_sessions').insert(row);
+  const {data,error}=await command
     .select(
       "id, owner_id, work_date, driver_number, driver_name, vehicle_no, start_km, check_in_at, check_in_time, check_out_at, check_out_time, updated_at",
     )
@@ -1938,7 +1926,7 @@ async function persistCheckInToSupabase(candidate) {
   }
 
   const saved = mapShiftSessionRow(data);
-  applyShiftSession(saved);
+  if(getShiftWorkDate()===candidate.workDate&&getAuthSessionSafe()?.userId===sess.userId)applyShiftSession(saved);
 
   return saved;
 }
@@ -2115,6 +2103,7 @@ async function checkOut() {
       })
       .eq("owner_id", sess.userId)
       .eq("work_date", currentShiftSession.workDate)
+      .eq("updated_at",currentShiftSession.updatedAt)
       .select(
         "id, owner_id, work_date, driver_number, driver_name, vehicle_no, start_km, check_in_at, check_in_time, check_out_at, check_out_time, updated_at",
       )
@@ -2124,7 +2113,7 @@ async function checkOut() {
       throw new Error(error.message);
     }
 
-    applyShiftSession(mapShiftSessionRow(data));
+    if(data.work_date===getShiftWorkDate()&&data.owner_id===getAuthSessionSafe()?.userId)applyShiftSession(mapShiftSessionRow(data));
 
     toast(
       "已 Check-out",
@@ -2144,15 +2133,16 @@ function saveDraft() {
   const d = getFormData();
   const records = getRecords();
   const cal = computeCurrentTdgBalance(records);
-  d.remainingVolume = cal.remaining;
+  d.remainingVolume = cal.remainingExactKg;
 
-  localStorage.setItem(LS_DRAFT, JSON.stringify(d));
+  try{TDG_STORAGE.setItem(LS_DRAFT,JSON.stringify(d));}catch(error){toast("Draft not saved",error.message);return;}
   saveYesterdayForDriver(getDriverKeySafe(), d);
   toast("已保存", "草稿已保存到本地。");
   saveIndexState();
 }
 
 async function done() {
+  if(window.__TDG_OPENING_READY===false){toast("Please refresh","Opening balance is not loaded for this vehicle/date.");return;}
   if (window.__savingDone) return;
   window.__savingDone = true;
 
@@ -2167,6 +2157,8 @@ async function done() {
 
     const d = getFormData();
 
+    const amount=$('deliveredVolume')?.value;
+    if(!d.vehicleNo||!shiftStart||amount==null||String(amount).trim()===''||!Number.isFinite(Number(amount))||Number(amount)<0){toast('Invalid record','Vehicle, Check-in and nonnegative Delivered Volume are required.');return;}
     if (!d.date) {
       toast("缺少日期", "请先选择 Date。");
       return;
@@ -2189,11 +2181,12 @@ async function done() {
 
     const recordsIncludingCurrent = [...getRecords(), d];
     const cal = computeCurrentTdgBalance(recordsIncludingCurrent);
-    d.remainingVolume = cal.remaining;
+    d.remainingVolume = cal.remainingExactKg;
 
     toast("上传中", "正在立即上传本条记录到 Supabase...");
 
     const remoteRow = await syncRecordToSupabase(d);
+    if(d.date!==tdgToday()||TDG_VOLUME.normalizeVehicleNo(d.vehicleNo)!==currentTdgVehicleNo()){toast("Saved","Saved for the original date and vehicle. Refresh this context.");return;}
 
     const records = getRecords();
     records.push({
@@ -2288,10 +2281,11 @@ function resetForm() {
 }
 
 function loadDraftIfAny() {
-  const raw = localStorage.getItem(LS_DRAFT);
+  const raw = TDG_STORAGE.getItem(LS_DRAFT);
   if (!raw) return false;
   try {
     const d = JSON.parse(raw);
+    if(d.date!==tdgLocalDate())return false;
     delete d.weekCycle;
     setFormData(d);
     toast("已恢复", "已从本地草稿恢复上次填写内容。");
@@ -2309,16 +2303,16 @@ const SS_INDEX_STATE = "tdg_index_state_v2";
 function saveIndexState() {
   try {
     const d = getFormData();
-    sessionStorage.setItem(SS_INDEX_STATE, JSON.stringify(d));
+    TDG_SESSION_STORAGE.setItem(SS_INDEX_STATE, JSON.stringify(d));
   } catch {}
 }
 
 function restoreIndexState() {
   try {
-    const raw = sessionStorage.getItem(SS_INDEX_STATE);
+    const raw = TDG_SESSION_STORAGE.getItem(SS_INDEX_STATE);
     if (!raw) return false;
     const d = JSON.parse(raw);
-    if (!d || typeof d !== "object") return false;
+    if (!d || typeof d !== "object" || d.date!==tdgLocalDate()) return false;
     setFormData(d);
     return true;
   } catch {
@@ -2342,7 +2336,7 @@ window.addEventListener("pageshow", () => {
    =============================== */
 
 function tdgToday() {
-  return tdgLocalDate();
+  return $("date")?.value||tdgLocalDate();
 }
 
 function tdgPullKey(driverNumber) {
@@ -2385,7 +2379,7 @@ function previousTdgImportKey(ownerId, vehicleNo = currentTdgVehicleNo()) {
 
 function readPreviousTdgCache(ownerId, vehicleNo) {
   try {
-    const raw = localStorage.getItem(previousTdgCacheKey(ownerId, vehicleNo));
+    const raw = TDG_STORAGE.getItem(previousTdgCacheKey(ownerId, vehicleNo));
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
@@ -2394,7 +2388,7 @@ function readPreviousTdgCache(ownerId, vehicleNo) {
 
 function savePreviousTdgCache(ownerId, vehicleNo, value) {
   try {
-    localStorage.setItem(
+    TDG_STORAGE.setItem(
       previousTdgCacheKey(ownerId, vehicleNo),
       JSON.stringify(value),
     );
@@ -2425,11 +2419,11 @@ function buildTdgBalanceResult({
     0,
   );
   const totalDeliveredKg = totalDeliveredLbs * LBS_TO_KG;
-  const remainingKg = integerPart(
+  const remainingKg = (
     Number(baseTdgKg || 0) +
       totalReloadKg -
       totalDeliveredKg -
-      totalAdjustmentKg,
+      totalAdjustmentKg
   );
 
   return {
@@ -2464,7 +2458,7 @@ async function fetchPreviousDayTdgBalanceFromSupabase() {
   }
 
   const targetDate = tdgToday();
-  const previousDate = getPreviousCalendarDate();
+  const previousDate=getPreviousCalendarDate(parseLocalDate(targetDate));
   const vehicleNo = currentTdgVehicleNo();
   const usesResetBaseline =
     window.TDG_VOLUME?.isResetVehicle?.(vehicleNo) &&
@@ -2496,13 +2490,13 @@ async function fetchPreviousDayTdgBalanceFromSupabase() {
   if (usesResetBaseline) {
     query = query.gte("work_date", TDG_RESET_DATE).lte("work_date", previousDate);
   } else {
-    query = query.eq("work_date", previousDate);
+    query = query.lte("work_date", previousDate);
   }
 
-  const { data, error } = await query
+  const { data, error } = await TDG_CORE.paged(query
     .order("work_date", { ascending: true })
     .order("completed_at", { ascending: true, nullsFirst: false })
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: true }));
 
   if (error) {
     throw new Error(`读取前一天 TDG 记录失败：${error.message}`);
@@ -2531,9 +2525,7 @@ async function fetchPreviousDayTdgBalanceFromSupabase() {
         TDG_RESET_DATE,
       )
     : previousDate;
-  const rows = usesResetBaseline
-    ? allRows.filter((row) => row?.work_date === balanceDate)
-    : allRows;
+  const rows=allRows;
 
   let baseTdgKg = null;
   for (const row of rows) {
@@ -2551,12 +2543,12 @@ async function fetchPreviousDayTdgBalanceFromSupabase() {
       targetDate,
       balanceDate,
       rows,
-      baseTdgKg: baseTdgKg ?? 0,
+      baseTdgKg: 0,
       source: "supabase_since_fleet_reset",
     });
   }
 
-  if (!(Number(baseTdgKg) > 0)) {
+  if(baseTdgKg==null||!Number.isFinite(Number(baseTdgKg))){
     return {
       ownerId: sess.userId,
       vehicleNo,
@@ -2603,7 +2595,7 @@ function applyPreviousDayTdgBalance(
     return false;
   }
 
-  setStartingTdgVolumeKg(integerPart(remainingKg));
+  setStartingTdgVolumeKg(remainingKg);window.__TDG_OPENING_READY=true;
   refreshDisplayedTdgVolume();
   saveIndexState();
 
@@ -2636,11 +2628,12 @@ async function importPreviousDayTdgBalanceOncePerDay({ force = false } = {}) {
     return { ok: false, reason: "no_login_session" };
   }
 
+  window.__TDG_OPENING_READY=false;
   const today = tdgToday();
   const vehicleNo = currentTdgVehicleNo();
   const importKey = previousTdgImportKey(sess.userId, vehicleNo);
 
-  if (!force && localStorage.getItem(importKey) === today) {
+  if (false && !force && TDG_STORAGE.getItem(importKey) === today) {
     return {
       ok: true,
       skipped: true,
@@ -2650,10 +2643,12 @@ async function importPreviousDayTdgBalanceOncePerDay({ force = false } = {}) {
 
   try {
     const balance = await fetchPreviousDayTdgBalanceFromSupabase();
+    if(currentTdgVehicleNo()!==vehicleNo||tdgToday()!==today||TDG_AUTH.getSession()?.userId!==sess.userId)return {ok:false,reason:"context_changed"};
     savePreviousTdgCache(sess.userId, vehicleNo, balance);
 
     if (!balance.found || balance.remainingKg == null) {
-      localStorage.setItem(importKey, today);
+      setStartingTdgVolumeKg(0);refreshDisplayedTdgVolume();toast("No starting balance","A verified starting balance is required for this vehicle.");
+      TDG_STORAGE.setItem(importKey, today);
       return {
         ok: true,
         imported: false,
@@ -2678,7 +2673,7 @@ async function importPreviousDayTdgBalanceOncePerDay({ force = false } = {}) {
       showMessage: true,
     });
 
-    localStorage.setItem(importKey, today);
+    TDG_STORAGE.setItem(importKey, today);
 
     return {
       ok: true,
@@ -2691,6 +2686,7 @@ async function importPreviousDayTdgBalanceOncePerDay({ force = false } = {}) {
     const cached = readPreviousTdgCache(sess.userId, vehicleNo);
 
     if (
+      currentTdgVehicleNo()===vehicleNo&&tdgToday()===today&&TDG_AUTH.getSession()?.userId===sess.userId&&
       cached?.targetDate === today &&
       String(cached?.vehicleNo || "") === String(vehicleNo || "") &&
       Number.isFinite(Number(cached?.remainingKg))
@@ -2707,7 +2703,7 @@ async function importPreviousDayTdgBalanceOncePerDay({ force = false } = {}) {
         );
       }
 
-      localStorage.setItem(importKey, today);
+      TDG_STORAGE.setItem(importKey, today);
 
       return {
         ok: true,
@@ -2734,17 +2730,18 @@ async function pullTodayRecordsFromSupabase() {
 
   const today = tdgToday();
 
-  const { data, error } = await sb
+  const { data, error } = await TDG_CORE.paged(sb
     .from("tdg_records")
     .select("*")
     .eq("owner_id", sess.userId)
     .eq("work_date", today)
-    .order("completed_at", { ascending: true });
+    .order("completed_at", { ascending: true }));
 
   if (error) throw error;
 
   const list = (data || []).map((r) => {
     const record = {
+      ownerId:r.owner_id,serverUpdatedAt:r.updated_at,
       clientRecordId: r.client_record_id,
       driverNumber: r.driver_number,
       driverName: r.driver_name,
@@ -2793,8 +2790,9 @@ async function pullTodayRecordsFromSupabase() {
     return record;
   });
 
-  setRecords(list);
-  localStorage.removeItem(LS_PENDING_SYNC);
+  if(TDG_AUTH.getSession()?.userId!==sess.userId||tdgToday()!==today)throw new Error("Record context changed");
+  const ids=new Set(list.map(r=>r.clientRecordId));
+  setRecords([...list,...getRecords().filter(r=>!r.synced&&!ids.has(r.clientRecordId))]);
 
   return list;
 }
@@ -2806,9 +2804,9 @@ async function ensureDailyPullAfterLogin() {
   const today = tdgToday();
   const key = tdgPullKey(sess.driverNumber);
 
-  const last = localStorage.getItem(key);
+  const last = TDG_STORAGE.getItem(key);
 
-  if (last === today) {
+  if (false && last === today) {
     console.log("TDG daily pull already done");
     return;
   }
@@ -2817,7 +2815,7 @@ async function ensureDailyPullAfterLogin() {
 
   const list = await pullTodayRecordsFromSupabase();
 
-  localStorage.setItem(key, today);
+  TDG_STORAGE.setItem(key, today);
 
   console.log("TDG sync finished:", list.length);
 }
@@ -2893,6 +2891,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   };
 
   fillDriverFromSession(sess);
+  if(!$("vehicleNo")?.value&&$("vehicleNo"))$("vehicleNo").value=sess.vehicleNo||"";
 
   const restored = restoreIndexState();
   let draftRestored = false;
@@ -2931,6 +2930,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   try {
+    await replayRecordOutbox();
     await ensureDailyPullAfterLogin();
   } catch (error) {
     console.warn(
@@ -2941,7 +2941,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   $("btnSeedDemo")?.addEventListener(
     "click",
-    () => seedDemoCustomers(true),
+    () => toast("Disabled", "Demo data is disabled."),
   );
 
   $("btnSearch")?.addEventListener(
@@ -3246,11 +3246,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   dateInput?.addEventListener(
     "change",
     async () => {
-      await restoreCheckInFromSupabase({
-        workDate: dateInput.value || tdgLocalDate(),
-        silent: true,
-      });
-      refreshDisplayedTdgVolume();
+      isArrived=false;arrivalTime='';shiftStart='';shiftFinish='';currentShiftSession=null;
+      if($('endKm'))$('endKm').value='';
+      try{await restoreCheckInFromSupabase({workDate:dateInput.value||tdgLocalDate(),silent:true});await importPreviousDayTdgBalanceOncePerDay({force:true});await pullTodayRecordsFromSupabase();await loadWeekCycle();}catch(error){toast('Context load failed',error.message);}
+      renderArrivalUI();renderShiftTime();refreshDisplayedTdgVolume();
     },
   );
 
@@ -3268,9 +3267,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   fillDriverFromSession(sess);
+  if(!$("vehicleNo")?.value&&$("vehicleNo"))$("vehicleNo").value=sess.vehicleNo||"";
 
   if (!getCustomers().length) {
-    seedDemoCustomers();
+    // No demo customers in production.
   }
 
   try {
@@ -3285,6 +3285,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   fillDriverFromSession(sess);
+  if(!$("vehicleNo")?.value&&$("vehicleNo"))$("vehicleNo").value=sess.vehicleNo||"";
 
   try {
     if (

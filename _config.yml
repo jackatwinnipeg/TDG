@@ -1,0 +1,14 @@
+exclude:
+  - database-proposals
+  - supabase
+  - tests
+  - release
+  - Export
+  - package.json
+  - package-lock.json
+  - build_release.py
+  - README_REPAIRS.md
+  - FIX_STATUS.md
+  - AUTH_SECURITY_FIX_REPORT.md
+  - DEPLOYMENT_STATUS.md
+  - deployment

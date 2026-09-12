@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
   <head>
+<script src="./js/tdg_core.js?v=20260912"></script><script src="./js/tdg_volume.js?v=20260912"></script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CO2 Fill Log</title>
@@ -244,9 +245,9 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0"></script>
-    <script src="./js/supabaseConfig.js"></script>
-    <script src="./js/supabaseClient.js"></script>
-    <script src="./js/auth_supabase.js"></script>
+    <script src="./js/supabaseConfig.js?v=20260912"></script>
+    <script src="./js/supabaseClient.js?v=20260912"></script>
+    <script src="./js/auth_supabase.js?v=20260912"></script>
 
     <script>
       const LS_RECORDS = "tdg_records_v3";
@@ -267,7 +268,7 @@
 
       function readCurrent() {
         try {
-          return JSON.parse(localStorage.getItem(LS_FILL));
+          return JSON.parse(TDG_STORAGE.getItem(LS_FILL));
         } catch {
           return null;
         }
@@ -275,7 +276,7 @@
 
       function loadLocalRecords() {
         try {
-          return JSON.parse(localStorage.getItem(LS_RECORDS) || "[]");
+          return JSON.parse(TDG_STORAGE.getItem(LS_RECORDS) || "[]");
         } catch {
           return [];
         }
@@ -321,7 +322,7 @@
         if (!acct) return [];
 
         const sb = getSupabaseClientStrict();
-        const { data, error } = await sb
+        const { data, error } = await TDG_CORE.paged(sb
           .from("tdg_records")
           .select(`
             id,
@@ -348,7 +349,7 @@
             created_at
           `)
           .eq("account_number", acct)
-          .order("created_at", { ascending: false });
+          .order("created_at", { ascending: false }));
 
         if (error) {
           console.error("loadAccountRecordsFromSupabase error:", error);
@@ -450,9 +451,9 @@
       function createRow(date, amount, notes) {
         const tr = document.createElement("tr");
         tr.innerHTML = `
-          <td>${safe(date)}</td>
-          <td>${safe(amount)}</td>
-          <td>${safe(notes)}</td>
+          <td>${TDG_CORE.escapeHtml(date)}</td>
+          <td>${TDG_CORE.escapeHtml(amount)}</td>
+          <td>${TDG_CORE.escapeHtml(notes)}</td>
         `;
         return tr;
       }
@@ -463,9 +464,9 @@
 
         try {
           const remoteRows = await loadAccountRecordsFromSupabase(acct);
-          if (remoteRows.length) return remoteRows;
+          return remoteRows.filter(r=>!TDG_VOLUME.isNonDeliveryEvent(r));
         } catch (err) {
-          console.warn("Supabase rows load failed, fallback to local:", err);
+          throw new Error("Cannot load current Fill Log: "+err.message);
         }
 
         return loadLocalRecords()
@@ -497,12 +498,21 @@
         }
       }
 
-      function saveHeaderDraft() {
+      let sharedProfile=null;
+      async function saveHeaderDraft(){
+        const sess=TDG_AUTH.getSession(),current=readCurrent();if(sess?.role!=='admin'){alert('Administrator required to save shared customer details');return;}if(!current?.accountNumber)return;
+        $('saveBtn').disabled=true;
+        try{const payload={account_number:current.accountNumber,account_name:current.accountName||'',tank_size:safe($('tankSize').value),fill_box_location:safe($('fillBoxLocation').value),gas_part_number:safe($('gasPartNumber').value),updated_by:sess.userId,updated_at:new Date().toISOString()};
+          const q=sharedProfile?supabaseClient.from('account_fill_log_profile').update(payload).eq('id',sharedProfile.id).eq('updated_at',sharedProfile.updated_at):supabaseClient.from('account_fill_log_profile').insert(payload);
+          const r=await q.select('*').maybeSingle();if(r.error||!r.data)throw new Error(r.error?.message||'Customer details changed; reload first');sharedProfile=r.data;alert('Shared customer details saved.');
+        }catch(error){alert('Save failed: '+error.message);}finally{$('saveBtn').disabled=false;}
+      }
+      function saveLocalHeaderDraft() {
         const current = readCurrent() || {};
         current.tankSize = safe($("tankSize").value);
         current.fillBoxLocation = safe($("fillBoxLocation").value);
         current.gasPartNumber = safe($("gasPartNumber").value);
-        localStorage.setItem(LS_FILL, JSON.stringify(current));
+        TDG_STORAGE.setItem(LS_FILL, JSON.stringify(current));
         alert("Saved.");
       }
 
@@ -519,7 +529,10 @@
         $("fillBoxLocation").value = safe(r.fillBoxLocation);
         $("gasPartNumber").value = safe(r.gasPartNumber || "CD BEVBULK");
 
-        await fillTable(r);
+        try{const result=await supabaseClient.from('account_fill_log_profile').select('*').eq('account_number',r.accountNumber).maybeSingle();if(result.error)throw result.error;sharedProfile=result.data;
+          if(sharedProfile){$('tankSize').value=sharedProfile.tank_size||'';$('fillBoxLocation').value=sharedProfile.fill_box_location||'';$('gasPartNumber').value=sharedProfile.gas_part_number??'CD BEVBULK';}
+          $('saveBtn').disabled=sess.role!=='admin';$('saveBtn').textContent=sess.role==='admin'?'Save customer details':'Customer details: admin only';await fillTable(r);
+        }catch(error){$('saveBtn').disabled=true;alert('Fill Log load failed: '+error.message);}
       }
 
       window.addEventListener("load", init);

@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
   <head>
+<script src="./js/tdg_core.js?v=20260912"></script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Batch CO2 Fill Logs</title>
@@ -201,11 +202,11 @@
 
     <main id="sheets"></main>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="./js/supabaseConfig.js"></script>
-    <script src="./js/supabaseClient.js"></script>
-    <script src="./js/auth_supabase.js"></script>
-    <script src="./js/tdg_volume.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0"></script>
+    <script src="./js/supabaseConfig.js?v=20260912"></script>
+    <script src="./js/supabaseClient.js?v=20260912"></script>
+    <script src="./js/auth_supabase.js?v=20260912"></script>
+    <script src="./js/tdg_volume.js?v=20260912"></script>
     <script>
       const LS_BATCH_FILL_SELECTION = "tdg_batch_fill_selection_v1";
       const MAX_ROWS = 14;
@@ -233,7 +234,7 @@
       function readSelection() {
         try {
           const parsed = JSON.parse(
-            localStorage.getItem(LS_BATCH_FILL_SELECTION) || "null"
+            TDG_STORAGE.getItem(LS_BATCH_FILL_SELECTION) || "null"
           );
 
           if (!parsed || !Array.isArray(parsed.accounts)) {
@@ -411,7 +412,7 @@
         if (!sb?.from) throw new Error("Supabase client not initialized");
 
         return runInChunks(accountNumbers, async (chunk) => {
-          const { data, error } = await sb
+          const { data, error } = await TDG_CORE.paged(sb
             .from("tdg_records")
             .select(`
               id,
@@ -433,7 +434,7 @@
               created_at
             `)
             .in("account_number", chunk)
-            .order("created_at", { ascending: false });
+            .order("created_at", { ascending: false }));
 
           if (error) throw error;
           return data || [];
@@ -504,7 +505,7 @@
                   </td>
                   <td class="cell-right">
                     <div class="cell-label">Tank Size SF/BD：</div>
-                    <input class="cell-input" />
+                    <input class="cell-input" value="${escapeAttr(account.tank_size||"")}" />
                   </td>
                 </tr>
                 <tr>
@@ -528,11 +529,11 @@
                 <tr>
                   <td class="cell-left">
                     <div class="cell-label">Fill box location:</div>
-                    <input class="cell-input" />
+                    <input class="cell-input" value="${escapeAttr(account.fill_box_location||"")}" />
                   </td>
                   <td class="cell-right">
                     <div class="cell-label">Gas Part Number:</div>
-                    <input class="cell-input" value="CD BEVBULK" />
+                    <input class="cell-input" value="${escapeAttr(account.gas_part_number??"CD BEVBULK")}" />
                   </td>
                 </tr>
               </table>
@@ -588,6 +589,8 @@ if (!sess) return;
             loadRecords(accountNumbers),
           ]);
 
+          const profiles=await TDG_CORE.paged(window.supabaseClient.from("account_fill_log_profile").select("*"));if(profiles.error)throw profiles.error;
+          const profileMap=new Map(profiles.data.map(p=>[p.account_number,p]));
           const customerMap = new Map(
             customers.map((row) => [safe(row.account_number), row])
           );
@@ -626,7 +629,7 @@ if (!sess) return;
             const customer =
               customerMap.get(accountNumber) || selectedAccount;
 
-            sheets.push(buildSheet(customer, records));
+            sheets.push(buildSheet({...customer,...(profileMap.get(accountNumber)||{})},records));
           }
 
           if (!sheets.length) {

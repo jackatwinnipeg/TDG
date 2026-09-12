@@ -1,0 +1,13 @@
+# Each function with verify_jwt=false validates credentials or its Bearer token in the function body.
+[functions.tdg-login]
+verify_jwt = false
+[functions.tdg-change-password]
+verify_jwt = false
+[functions.admin-create-user]
+verify_jwt = false
+[functions.admin-update-user]
+verify_jwt = false
+[functions.admin-reset-password]
+verify_jwt = true
+[functions.admin-delete-user]
+verify_jwt = false

@@ -1,0 +1,32 @@
+[
+  {
+    "name": "tdg-login",
+    "status": 401,
+    "body": "{\"error\":\"Invalid credentials\"}"
+  },
+  {
+    "name": "tdg-change-password",
+    "status": 401,
+    "body": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "name": "admin-create-user",
+    "status": 401,
+    "body": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "name": "admin-update-user",
+    "status": 401,
+    "body": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "name": "admin-reset-password",
+    "status": 401,
+    "body": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "name": "admin-delete-user",
+    "status": 401,
+    "body": "{\"error\":\"Unauthorized\"}"
+  }
+]

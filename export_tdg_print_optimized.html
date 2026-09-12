@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="zh-CN">
   <head>
+<script src="./js/tdg_core.js?v=20260912"></script>
     <meta charset="utf-8" />
     <meta
       name="viewport"
@@ -391,10 +392,10 @@
       </div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0"></script>
-    <script src="./js/supabaseConfig.js"></script>
-    <script src="./js/supabaseClient.js"></script>
-    <script src="./js/auth_supabase.js"></script>
-    <script src="./js/tdg_volume.js"></script>
+    <script src="./js/supabaseConfig.js?v=20260912"></script>
+    <script src="./js/supabaseClient.js?v=20260912"></script>
+    <script src="./js/auth_supabase.js?v=20260912"></script>
+    <script src="./js/tdg_volume.js?v=20260912"></script>
     <script>
       const LBS_TO_KG = 0.45359237;
       const KG_TO_LBS = 1 / LBS_TO_KG;
@@ -540,7 +541,7 @@
         let payload = null;
         try {
           payload = JSON.parse(
-            localStorage.getItem("tdg_export_payload_v1") || "null",
+            TDG_STORAGE.getItem("tdg_export_payload_v1") || "null",
           );
         } catch {}
 
@@ -682,12 +683,12 @@ const rows = sortedRecords.map(buildRow);
           const r = rows[i] || {};
           out.push(`
         <tr>
-          <td class="center">${safe(r.arrive)}</td>
-          <td>${safe(r.customerLocation)}</td>
-          <td class="center">${safe(r.accountNumber)}</td>
-          <td>${safe(r.delivered)}</td>
-          <td>${safe(r.balance)}</td>
-          <td>${safe(r.notes)}</td>
+          <td class="center">${TDG_CORE.escapeHtml(r.arrive)}</td>
+          <td>${TDG_CORE.escapeHtml(r.customerLocation)}</td>
+          <td class="center">${TDG_CORE.escapeHtml(r.accountNumber)}</td>
+          <td>${TDG_CORE.escapeHtml(r.delivered)}</td>
+          <td>${TDG_CORE.escapeHtml(r.balance)}</td>
+          <td>${TDG_CORE.escapeHtml(r.notes)}</td>
         </tr>
       `);
         }

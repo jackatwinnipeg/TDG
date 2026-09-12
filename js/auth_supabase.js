@@ -1,8 +1,7 @@
 /* /js/auth_supabase.js
  * Supabase Auth and protected-page helpers.
  *
- * Driver Number is resolved to the user's configured email by the existing
- * lookup_login_profile RPC. Supabase remains the sole owner of access and
+ * Driver Number is resolved privately by the tdg-login Edge Function. Supabase remains the sole owner of access and
  * refresh token persistence; the TDG session contains display/profile data
  * only and is never accepted until the Supabase user has been validated.
  */
@@ -57,6 +56,7 @@
   }
 
   function clearAuthCache() {
+    TDG_CORE.bindUser(null);
     try {
       sessionStorage.removeItem(SS_SESSION);
       localStorage.removeItem(LS_LEGACY_SUPABASE_SESSION);
@@ -93,7 +93,8 @@
     window.location.replace(loginUrl());
   }
 
-  function getPostLoginRedirect(fallback = "./index.html") {
+  function getPostLoginRedirect(fallback="./index.html"){
+    if(getSession()?.mustChangePassword)return appRelative("change_password.html");
     const requested = new URLSearchParams(window.location.search).get("returnTo");
     if (!requested) return fallback;
 
@@ -117,7 +118,7 @@
     if (!session) return;
 
     try {
-      localStorage.setItem(
+      TDG_STORAGE.setItem(
         "tdg_user_profile_v2",
         JSON.stringify({
           driverNumber: session.driverNumber || "",
@@ -135,7 +136,7 @@
     const { data, error } = await sb
       .from("tdg_profiles")
       .select(
-        "id, username, driver_number, display_name, role, vehicle_no, email, is_active",
+        "id, username, driver_number, display_name, role, vehicle_no, email, is_active, must_change_password",
       )
       .eq("id", userId)
       .maybeSingle();
@@ -155,7 +156,7 @@
       userId: user?.id || profile?.id || "",
       username: loginName,
       displayName: profile?.display_name || loginName,
-      role: profile?.role || "driver",
+      role:profile?.role||"driver",mustChangePassword:!!profile?.must_change_password,
       driverNumber: loginName,
       vehicleNo: profile?.vehicle_no || "",
       loginAt:
@@ -203,6 +204,7 @@
 
       const session = buildTDGSession({ profile, user });
       setSession(session);
+      TDG_CORE.bindUser(session.userId);
       localStorage.setItem(LS_TDG_PROFILE, JSON.stringify(profile));
       syncProfileToLegacyLS();
       return session;
@@ -215,7 +217,7 @@
 
   async function authenticate(username, password) {
     const loginInput = safe(username).toLowerCase();
-    const suppliedPassword = safe(password);
+    const suppliedPassword = String(password ?? "");
     const sb = getSupabaseClient();
 
     if (!sb?.auth) {
@@ -228,23 +230,9 @@
     clearAuthCache();
 
     try {
-      const { data: rows, error: lookupError } = await sb.rpc(
-        "lookup_login_profile",
-        { login_input: loginInput },
-      );
-      const lookupProfile = Array.isArray(rows) ? rows[0] : rows;
-
-      if (lookupError) {
-        return { ok: false, msg: `登录前查询用户失败: ${lookupError.message}` };
-      }
-      if (!lookupProfile?.email || lookupProfile.is_active === false) {
-        return { ok: false, msg: "用户名、密码错误或用户已停用" };
-      }
-
-      const { data, error } = await sb.auth.signInWithPassword({
-        email: safe(lookupProfile.email).toLowerCase(),
-        password: suppliedPassword,
-      });
+      const response=await sb.functions.invoke('tdg-login',{body:{login:loginInput,password:suppliedPassword}});
+      if(response.error||!response.data?.session)return {ok:false,msg:'登录失败，请检查账号、密码或稍后重试'};
+      const {data,error}=await sb.auth.setSession(response.data.session);
 
       if (error || !data?.user) {
         clearAuthCache();
@@ -259,6 +247,7 @@
 
       const session = buildTDGSession({ profile, user: data.user });
       setSession(session);
+      TDG_CORE.bindUser(session.userId);
       localStorage.setItem(LS_TDG_PROFILE, JSON.stringify(profile));
       syncProfileToLegacyLS();
 
@@ -284,6 +273,7 @@
       return null;
     }
 
+    if(session.mustChangePassword&&!location.pathname.endsWith("/change_password.html")){location.replace(appRelative("change_password.html"));return null;}
     if (Array.isArray(roles) && roles.length && !roles.includes(session.role)) {
       alert("权限不足（Access Denied）");
       window.location.replace(appRelative("index.html"));
@@ -302,6 +292,7 @@
       redirectToLogin();
       return null;
     }
+    if(session.mustChangePassword&&!location.pathname.endsWith("/change_password.html")){location.replace(appRelative("change_password.html"));return null;}
     if (Array.isArray(roles) && roles.length && !roles.includes(session.role)) {
       return null;
     }

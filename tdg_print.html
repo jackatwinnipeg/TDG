@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="zh-CN">
   <head>
+<script src="./js/tdg_core.js?v=20260912"></script>
     <meta charset="utf-8" />
     <meta
       name="viewport"
@@ -384,11 +385,11 @@
       </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="./js/supabaseConfig.js"></script>
-    <script src="./js/supabaseClient.js"></script>
-    <script src="./js/auth_supabase.js"></script>
-    <script src="./js/tdg_volume.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0"></script>
+    <script src="./js/supabaseConfig.js?v=20260912"></script>
+    <script src="./js/supabaseClient.js?v=20260912"></script>
+    <script src="./js/auth_supabase.js?v=20260912"></script>
+    <script src="./js/tdg_volume.js?v=20260912"></script>
 
     <script>
       const KG_TO_LBS = 2.20462;
@@ -591,7 +592,8 @@
         document.getElementById("chkCO2").checked = hasCO2 || (!hasO2 && !hasN2 && !hasAr);
       }
 
-      function fillHeader(date, records) {
+      function fillHeader(date, records, context) {
+        const header=TDG_CORE.resolveShift(records,context.dailyLog,context.shift);
         const first = records[0] || {};
 
         const startKm = safe(first.start_km ?? first.raw?.startKm ?? "");
@@ -610,11 +612,11 @@
 
         document.getElementById("hdrDate").textContent = date;
         document.getElementById("hdrVehicle").textContent = vehicleNo;
-        document.getElementById("hdrStartKm").textContent = startKm;
-        document.getElementById("hdrEndKm").textContent = endKm;
-        document.getElementById("hdrTotalKm").textContent = totalKm;
-        document.getElementById("hdrShiftStart").textContent = shiftStart;
-        document.getElementById("hdrShiftFinish").textContent = shiftFinish;
+        document.getElementById("hdrStartKm").textContent = header.startKm;
+        document.getElementById("hdrEndKm").textContent = header.endKm;
+        document.getElementById("hdrTotalKm").textContent = header.totalKm;
+        document.getElementById("hdrShiftStart").textContent = header.shiftStart;
+        document.getElementById("hdrShiftFinish").textContent = header.shiftFinish;
         document.getElementById("hdrTdgStart").textContent = tdgStartVolume;
 
         document.getElementById("sigPrint").textContent = driverName;
@@ -644,7 +646,7 @@
           rows[i].balance = String(balanceLbs);
         }
 
-        const tdgRemainKg = Math.round(running);
+        const tdgRemainKg = Math.trunc(running);
         document.getElementById("hdrTdgRemaining").textContent =
           Number.isFinite(tdgRemainKg) ? String(tdgRemainKg) : "";
 
@@ -662,12 +664,12 @@
           .map(
             (r) => `
             <tr>
-              <td class="center">${safe(r.arrive)}</td>
-              <td>${safe(r.customerLocation)}</td>
-              <td class="center">${safe(r.accountNumber)}</td>
-              <td>${safe(r.delivered)}</td>
-              <td>${safe(r.balance)}</td>
-              <td>${safe(r.notes)}</td>
+              <td class="center">${TDG_CORE.escapeHtml(r.arrive)}</td>
+              <td>${TDG_CORE.escapeHtml(r.customerLocation)}</td>
+              <td class="center">${TDG_CORE.escapeHtml(r.accountNumber)}</td>
+              <td>${TDG_CORE.escapeHtml(r.delivered)}</td>
+              <td>${TDG_CORE.escapeHtml(r.balance)}</td>
+              <td>${TDG_CORE.escapeHtml(r.notes)}</td>
             </tr>
           `,
           )
@@ -677,7 +679,7 @@
       async function loadByDate(date) {
         const sb = getSupabaseClientStrict();
 
-        const { data, error } = await sb
+        const { data, error } = await TDG_CORE.paged(sb
           .from("tdg_records")
           .select(`
             id,
@@ -703,7 +705,7 @@
             created_at
           `)
           .eq("work_date", date)
-          .order("created_at", { ascending: true });
+          .order("created_at", { ascending: true }));
 
         if (error) throw error;
         return data || [];
@@ -726,7 +728,7 @@
         }
 
         try {
-          const sess = window.TDG_AUTH?.requireAuth?.();
+          const sess = await window.TDG_AUTH?.requireAuthAsync?.();
           if (!sess) return;
 
           const records = await loadByDate(date);
@@ -741,7 +743,12 @@
             return;
           }
 
-          fillHeader(date, records);
+          const groups=[...new Map(records.map(r=>[`${r.owner_id}|${r.vehicle_no}`,{ownerId:r.owner_id,date,vehicleNo:r.vehicle_no}])).values()];
+          if(groups.length>1){TDG_STORAGE.setItem('tdg_batch_tdg_selection_v1',JSON.stringify({groups}));location.replace('./batch_tdg_print.html');return;}
+          const context=await TDG_CORE.loadShiftContext(getSupabaseClientStrict(),records[0].owner_id,date,records[0].vehicle_no);
+          const opening=await TDG_CORE.openingBalance(getSupabaseClientStrict(),records[0].owner_id,date,records[0].vehicle_no,records);
+          records[0]={...records[0],tdg_volume:opening};
+          fillHeader(date, records,context);
           setCheckboxesFromRows(records);
           fillTable(records);
 
