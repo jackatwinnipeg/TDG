@@ -642,11 +642,11 @@
             const deliveredLbs = num(rows[i].delivered);
             running -= lbsToKg(deliveredLbs);
           }
-          const balanceLbs = Math.round(kgToLbs(running));
+          const balanceLbs = Math.max(0, Math.round(kgToLbs(running)));
           rows[i].balance = String(balanceLbs);
         }
 
-        const tdgRemainKg = Math.trunc(running);
+        const tdgRemainKg = Math.max(0, Math.trunc(running));
         document.getElementById("hdrTdgRemaining").textContent =
           Number.isFinite(tdgRemainKg) ? String(tdgRemainKg) : "";
 

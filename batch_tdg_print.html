@@ -776,11 +776,13 @@
             runningKg -= lbsToKg(row.delivered);
           }
 
-          row.balanceLbs = String(Math.round(kgToLbs(runningKg)));
+          row.balanceLbs = String(
+            Math.max(0, Math.round(kgToLbs(runningKg)))
+          );
           return row;
         });
 
-        setText(sheet, "hdrTdgRemaining", integerPart(runningKg));
+        setText(sheet, "hdrTdgRemaining", Math.max(0, integerPart(runningKg)));
 
         const tbody = field(sheet, "tbody");
         if (!tbody) return;

@@ -521,8 +521,12 @@
         const acct = safe(r.accountNumber || r.account || "");
         const delivered =
           r.delivered != null ? safe(r.delivered) : safe(r.deliveredVolume);
+        const remainingValue =
+          r.remaining != null
+            ? parseNum(r.remaining)
+            : parseNum(r.remainingVolume);
         const remaining =
-          r.remaining != null ? safe(r.remaining) : safe(r.remainingVolume);
+          remainingValue == null ? "" : safe(Math.max(0, remainingValue));
 
         const notes = safe(r.notes || r.note || "");
         const loc = [customer, addr, city, route].filter(Boolean).join(" / ");
@@ -594,7 +598,7 @@
             : records.reduce(applyRecordToTdgBalance, tdgStart);
 
         document.getElementById("hdrTdgRemaining").textContent =
-          tdgRemain == null ? "" : String(Math.trunc(tdgRemain));
+          tdgRemain == null ? "" : String(Math.max(0, Math.trunc(tdgRemain)));
 
         // 签名区
         document.getElementById("sigPrint").textContent = safe(
@@ -671,7 +675,7 @@ const rows = sortedRecords.map(buildRow);
         for (let i = 0; i < rows.length; i++) {
           running = applyRecordToTdgBalance(running, sortedRecords[i]);
 
-          const balanceLbs = Math.round(kgToLbs(running));
+          const balanceLbs = Math.max(0, Math.round(kgToLbs(running)));
 
           rows[i].balance = String(balanceLbs);
         }
