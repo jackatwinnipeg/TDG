@@ -314,7 +314,10 @@ function getAdjustmentAmountLbs(record) {
 }
 
 function computeRemainingTDG(baseTdgKg, records) {
-  const baseKg = Number(baseTdgKg) || 0;
+  const parsedBaseKg = Number(baseTdgKg);
+  const baseKg = Number.isFinite(parsedBaseKg)
+    ? Math.max(0, parsedBaseKg)
+    : 0;
   const list = Array.isArray(records) ? records : [];
 
   const totalReloadKg = list.reduce(
@@ -336,8 +339,9 @@ function computeRemainingTDG(baseTdgKg, records) {
   );
 
   const totalDeliveredKg = totalDeliveredLbs * LBS_TO_KG;
-  const remainingExactKg =
+  const calculatedRemainingExactKg =
     baseKg + totalReloadKg - totalDeliveredKg - totalAdjustmentKg;
+  const remainingExactKg = Math.max(0, calculatedRemainingExactKg);
   const remainingKg = integerPart(remainingExactKg);
   const remainingLbs = remainingExactKg * KG_TO_LBS;
 
@@ -354,17 +358,18 @@ function computeRemainingTDG(baseTdgKg, records) {
     remainingKg,
     remainingExactKg,
     remainingLbs,
+    calculatedRemainingExactKg,
   };
 }
 
 function getStartingTdgVolumeKg() {
   const value = Number($("tdgStartVolume")?.value);
-  return Number.isFinite(value) ? value : 0;
+  return Number.isFinite(value) ? Math.max(0, value) : 0;
 }
 
 function setStartingTdgVolumeKg(value) {
   const number = Number(value);
-  const normalized = Number.isFinite(number) ? number : 0;
+  const normalized = Number.isFinite(number) ? Math.max(0, number) : 0;
   const input = $("tdgStartVolume");
 
   if (input) {
@@ -2419,11 +2424,13 @@ function buildTdgBalanceResult({
     0,
   );
   const totalDeliveredKg = totalDeliveredLbs * LBS_TO_KG;
-  const remainingKg = (
-    Number(baseTdgKg || 0) +
+  const normalizedBaseTdgKg = Math.max(0, Number(baseTdgKg) || 0);
+  const remainingKg = Math.max(
+    0,
+    normalizedBaseTdgKg +
       totalReloadKg -
       totalDeliveredKg -
-      totalAdjustmentKg
+      totalAdjustmentKg,
   );
 
   return {
@@ -2434,7 +2441,7 @@ function buildTdgBalanceResult({
     balanceDate,
     found: true,
     recordCount: list.length,
-    baseTdgKg: Number(baseTdgKg || 0),
+    baseTdgKg: normalizedBaseTdgKg,
     totalReloadKg,
     totalAdjustmentLbs,
     totalAdjustmentKg,
@@ -2595,7 +2602,7 @@ function applyPreviousDayTdgBalance(
     return false;
   }
 
-  setStartingTdgVolumeKg(remainingKg);window.__TDG_OPENING_READY=true;
+  setStartingTdgVolumeKg(Math.max(0, remainingKg));window.__TDG_OPENING_READY=true;
   refreshDisplayedTdgVolume();
   saveIndexState();
 
