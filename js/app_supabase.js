@@ -51,6 +51,22 @@ function toast(title, msg) {
   }, 2200);
 }
 
+function showAddRecordUploadDialog({ success, errorMessage = "" }) {
+  if (success) {
+    window.alert(
+      "上传成功\n\n本条记录已成功写入 Supabase 数据库。",
+    );
+    return;
+  }
+
+  const reason = String(errorMessage || "").trim();
+  const reasonText = reason ? `\n\n原因：${reason}` : "";
+
+  window.alert(
+    `上传失败\n\n本条记录未能写入 Supabase 数据库，当前记录没有提交。请检查网络或权限后重试。${reasonText}`,
+  );
+}
+
 function setStatus(text) {
   const statusEl = $("statusTag");
   if (statusEl) statusEl.textContent = "Status：" + text;
@@ -2151,6 +2167,8 @@ async function done() {
   if (window.__savingDone) return;
   window.__savingDone = true;
 
+  let databaseUploadSucceeded = false;
+
   const btn = $("btnDone");
   if (btn) btn.disabled = true;
 
@@ -2191,7 +2209,8 @@ async function done() {
     toast("上传中", "正在立即上传本条记录到 Supabase...");
 
     const remoteRow = await syncRecordToSupabase(d);
-    if(d.date!==tdgToday()||TDG_VOLUME.normalizeVehicleNo(d.vehicleNo)!==currentTdgVehicleNo()){toast("Saved","Saved for the original date and vehicle. Refresh this context.");return;}
+    databaseUploadSucceeded = true;
+    if(d.date!==tdgToday()||TDG_VOLUME.normalizeVehicleNo(d.vehicleNo)!==currentTdgVehicleNo()){toast("Saved","Saved for the original date and vehicle. Refresh this context.");showAddRecordUploadDialog({ success: true });return;}
 
     const records = getRecords();
     records.push({
@@ -2204,7 +2223,6 @@ async function done() {
 
     setPill("donePill", true);
     setStatus("已完成");
-    toast("上传成功", "本条记录已成功写入 Supabase。");
 
     saveYesterdayForDriver(getDriverKeySafe(), d);
 
@@ -2242,9 +2260,13 @@ async function done() {
     }
 
     $("accountNumber")?.focus();
+    showAddRecordUploadDialog({ success: true });
   } catch (e) {
     console.error("Add Record immediate upload failed:", e);
-    toast("上传失败", "未成功写入 Supabase，当前记录没有提交。请检查网络或权限后重试。");
+    showAddRecordUploadDialog({
+      success: databaseUploadSucceeded,
+      errorMessage: databaseUploadSucceeded ? "" : e?.message,
+    });
   } finally {
     window.__savingDone = false;
     if (btn) btn.disabled = false;
