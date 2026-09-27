@@ -1,1346 +1,709 @@
-:root{
+/**
+ * ====================================================================
+ * Design System & CSS Variables
+ * ====================================================================
+ */
+:root {
   /* Linde-inspired blues (KEEP - do not change) */
-  --brand-950:#002244;
-  --brand-900:#003060;
-  --brand-850:#004070;
-  --brand-800:#005090;
-  --brand-700:#0060a0;
-  --brand-600:#0070b0;
-  --brand-500:#0080c0;
+  --brand-950: #002244;
+  --brand-900: #003060;
+  --brand-850: #004070;
+  --brand-800: #005090;
+  --brand-700: #0060a0;
+  --brand-600: #0070b0;
+  --brand-500: #0080c0;
 
+  /* Theme tokens */
   --bg: var(--brand-950);
-  --card: rgba(18, 34, 68, .72);
-  --text:#eaf2ff;
-  --muted:#a8bddf;
+  --card: rgba(18, 34, 68, 0.72);
+  --card-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.035));
+  --text: #eaf2ff;
+  --muted: #a8bddf;
 
-  --line: rgba(255,255,255,.10);
-  --shadow: 0 12px 36px rgba(0,0,0,.38);
+  --line: rgba(255, 255, 255, 0.10);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --shadow: 0 12px 36px rgba(0, 0, 0, 0.38);
   --radius: 18px;
+  --radius-sm: 14px;
 
-  /* Accent = Linde bright blue (KEEP) */
+  /* Accent & Interactive (KEEP) */
   --accent: var(--brand-500);
+  --focus-border: #35b9f2;
+  --focus-ring: rgba(53, 185, 242, 0.25);
+  --caret-color: #5bc8ff;
+
+  /* Form components */
+  --input-bg: rgba(0, 20, 43, 0.66);
+  --input-border: rgba(255, 255, 255, 0.14);
 
   /* Status colors (KEEP) */
-  --ok:#55d38a;
-  --warn:#ffd166;
-  --bad:#ff6b6b;
+  --ok: #55d38a;
+  --warn: #ffd166;
+  --bad: #ff6b6b;
 
   /* Layout tokens */
   --gap: 12px;
   --tap: 48px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bot: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
 }
 
-*{ box-sizing:border-box; }
-
-html,
-body{
-  height:100%;
+/* =========================================================
+   Base & Reset
+   ========================================================= */
+*, *::before, *::after {
+  box-sizing: border-box;
 }
 
-html{
-  background: var(--bg);
+html {
   font-size: 16px;
   -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+  background: var(--bg);
 }
 
-body{
-  min-height:100vh;
-  margin:0;
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0;
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   color: var(--text);
-  background-repeat:no-repeat;
-  background-size:cover;
-  background-attachment:fixed;
-  overscroll-behavior-y:none;
+  line-height: 1.5;
+  background:
+    radial-gradient(circle at 12% -8%, rgba(0, 128, 192, 0.24), transparent 34rem),
+    radial-gradient(circle at 100% 18%, rgba(0, 96, 160, 0.16), transparent 28rem),
+    linear-gradient(180deg, var(--brand-950) 0%, #001a34 100%);
+  background-repeat: no-repeat;
   text-rendering: optimizeLegibility;
+  padding-bottom: var(--safe-bot);
 }
 
-/* ---------- Container ---------- */
-.container{
+::selection {
+  background: rgba(0, 128, 192, 0.42);
+  color: #ffffff;
+}
+
+/* =========================================================
+   Layout & Container
+   ========================================================= */
+.container {
   max-width: 1100px;
   margin: 0 auto;
-  padding: 12px 14px;
+  padding: 12px max(14px, var(--safe-right)) 24px max(14px, var(--safe-left));
 }
 
-/* ---------- Header ---------- */
-header{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:12px;
-  padding:10px 6px 14px;
-}
-
-.header-left{
-  display:flex;
-  align-items:center;
-  gap:16px;
-  min-width:0;
-}
-
-.logo{
-  display:block;
-  height:100px;
-  width:auto;
-  border-radius:8px;
-}
-
-header h1{
-  margin:0;
-  font-size:45px;
-  font-weight:800;
-  letter-spacing:.3px;
-  line-height:1.05;
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
-}
-
-/* ---------- Pills / Tags ---------- */
-.tag{
-  font-size:12px;
-  color:var(--muted);
-  border:1px solid rgba(255,255,255,.14);
-  padding:8px 12px;
-  border-radius:999px;
-  background:rgba(0,0,0,.20);
-  white-space:nowrap;
-}
-
-.pill{
-  display:inline-flex;
-  align-items:center;
-  gap:8px;
-  padding:8px 12px;
-  border-radius:999px;
-  font-size:12px;
-  user-select:none;
-  background:rgba(0,128,192,.14);
-  border:1px solid rgba(0,128,192,.28);
-  color:#cfeaff;
-}
-
-.pill.off{
-  background:rgba(255,255,255,.08);
-  border:1px solid rgba(255,255,255,.14);
-  color:var(--muted);
-}
-
-/* ---------- Layout ---------- */
-.layout{
-  display:grid;
+.layout {
+  display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
-  gap:14px;
-  align-items:start;
+  gap: 14px;
+  align-items: start;
 }
 
-/* ---------- Cards ---------- */
-.card{
-  background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
-  border:1px solid rgba(255,255,255,.10);
-  border-radius:var(--radius);
-  box-shadow:var(--shadow);
-  overflow:hidden;
+.row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
-.card .hd{
-  padding:14px;
-  border-bottom:1px solid rgba(255,255,255,.08);
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:12px;
-  flex-wrap:wrap;
+.grid2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--gap);
 }
 
-.card .bd{
-  padding:14px;
+.grid3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--gap);
 }
 
-/* ---------- Rows / Grids ---------- */
-.row{
-  display:flex;
-  gap:10px;
-  flex-wrap:wrap;
-  align-items:center;
+/* =========================================================
+   Header
+   ========================================================= */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: max(10px, var(--safe-top)) 6px 14px;
 }
 
-.grid2{
-  display:grid;
-  grid-template-columns:repeat(2, minmax(0, 1fr));
-  gap:var(--gap);
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
 }
 
-.grid3{
-  display:grid;
-  grid-template-columns:repeat(3, minmax(0, 1fr));
-  gap:var(--gap);
+.logo {
+  display: block;
+  height: 96px;
+  width: auto;
+  object-fit: contain;
+  border-radius: 8px;
 }
 
-/* ---------- Typography ---------- */
-label{
-  display:block;
-  font-size:12px;
-  color:var(--muted);
-  margin:0 0 6px;
+header h1 {
+  margin: 0;
+  font-size: clamp(24px, 4.5vw, 45px);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+  text-wrap: balance;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.help{
-  font-size:12px;
-  color:var(--muted);
-  margin-top:8px;
-  line-height:1.35;
+/* =========================================================
+   Pills & Tags
+   ========================================================= */
+.tag {
+  font-size: 12px;
+  color: var(--muted);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.20);
+  white-space: nowrap;
 }
 
-.muted{
-  color:var(--muted);
-  font-size:12px;
-  line-height:1.35;
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  user-select: none;
+  background: rgba(0, 128, 192, 0.14);
+  border: 1px solid rgba(0, 128, 192, 0.28);
+  color: #cfeaff;
 }
 
-.result h3{
-  margin:0 0 8px;
-  font-size:14px;
+.pill.off {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: var(--muted);
 }
 
-/* ---------- Form controls ---------- */
+/* =========================================================
+   Cards
+   ========================================================= */
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(16px) saturate(120%);
+  -webkit-backdrop-filter: blur(16px) saturate(120%);
+  overflow: hidden;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.card .hd {
+  padding: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.card .hd h2,
+.card .hd h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.card .bd {
+  padding: 14px;
+}
+
+/* =========================================================
+   Typography & Helpers
+   ========================================================= */
+label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #bfd0ec;
+  margin: 0 0 6px;
+  letter-spacing: 0.01em;
+}
+
+.help,
+.muted {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.help {
+  margin-top: 8px;
+}
+
+.divider {
+  height: 1px;
+  background: var(--line);
+  margin: 14px 0;
+}
+
+.result {
+  border: 1px solid rgba(53, 185, 242, 0.35);
+  border-radius: 16px;
+  padding: 12px;
+  background: rgba(0, 18, 39, 0.45);
+}
+
+.result h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+/* =========================================================
+   Form Controls
+   ========================================================= */
 input,
 textarea,
-select{
-  width:100%;
-  min-height:var(--tap);
-  padding:12px 12px;
-  border-radius:14px;
-  border:1px solid rgba(255,255,255,.12);
-  background:rgba(0,0,0,.18);
-  color:var(--text);
-  outline:none;
-  font-size:16px; /* 防止 iPhone 聚焦自动放大 */
-  line-height:1.4;
+select {
+  width: 100%;
+  min-height: var(--tap);
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--text);
+  outline: none;
+  font-size: 16px; /* 保持16px避免iOS自动放大视口 */
+  line-height: 1.4;
+  caret-color: var(--caret-color);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
 }
 
-textarea{
-  min-height:110px;
-  resize:vertical;
+textarea {
+  min-height: 110px;
+  resize: vertical;
 }
 
 input::placeholder,
-textarea::placeholder{
-  color:rgba(234,242,255,.55);
+textarea::placeholder {
+  color: rgba(234, 242, 255, 0.48);
 }
 
 input:focus,
 textarea:focus,
-select:focus{
-  border-color:rgba(0,128,192,.80);
+select:focus {
+  border-color: var(--focus-border);
   box-shadow:
-    0 0 0 3px rgba(0,128,192,.20),
-    0 10px 30px rgba(0,128,192,.10);
+    0 0 0 3px var(--focus-ring),
+    0 10px 24px rgba(0, 16, 36, 0.20);
+}
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--focus-border);
+  outline-offset: 1px;
 }
 
 input:disabled,
 textarea:disabled,
-select:disabled{
-  opacity:.55;
-  cursor:not-allowed;
+select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
-/* ---------- Help / Divider / Result ---------- */
-.divider{
-  height:1px;
-  background:rgba(255,255,255,.10);
-  margin:14px 0;
+/* =========================================================
+   Buttons
+   ========================================================= */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius-sm);
+  min-height: var(--tap);
+  padding: 10px 16px;
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1.2;
+  user-select: none;
+  touch-action: manipulation;
+  background: linear-gradient(180deg, rgba(0, 128, 192, 1) 0%, rgba(0, 96, 160, 1) 100%);
+  color: #071022;
+  box-shadow: 0 8px 20px rgba(0, 128, 192, 0.22);
+  transition: filter 0.18s ease, transform 0.12s ease, box-shadow 0.18s ease;
 }
 
-.result{
-  border:1px dashed rgba(0,128,192,.35);
-  border-radius:16px;
-  padding:12px;
-  background:rgba(0,0,0,.16);
+.btn:active:not(:disabled) {
+  transform: translateY(1px) scale(0.99);
 }
 
-/* ---------- Buttons ---------- */
-.btn{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  cursor:pointer;
-  border:none;
-  border-radius:14px;
-  min-height:var(--tap);
-  padding:10px 14px;
-  font-weight:700;
-  font-size:15px;
-  line-height:1.2;
-  user-select:none;
-  touch-action:manipulation;
-  background:linear-gradient(180deg, rgba(0,128,192,1) 0%, rgba(0,96,160,1) 100%);
-  color:#071022;
-  box-shadow:0 10px 22px rgba(0,128,192,.20);
+.btn:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
-.btn:hover{
-  filter:brightness(1.05);
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    filter: brightness(1.08);
+  }
 }
 
-.btn.secondary{
-  background:rgba(255,255,255,.10);
-  border:1px solid rgba(255,255,255,.16);
-  color:var(--text);
-  box-shadow:none;
+.btn.secondary {
+  background: rgba(255, 255, 255, 0.085);
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+  box-shadow: none;
 }
 
-.btn.ok{
-  background:var(--ok);
-  box-shadow:0 10px 22px rgba(85,211,138,.18);
+.btn.ok {
+  background: var(--ok);
+  color: #071e12;
+  box-shadow: 0 8px 20px rgba(85, 211, 138, 0.20);
 }
 
-.btn.warn{
-  background:var(--warn);
-  box-shadow:0 10px 22px rgba(255,209,102,.15);
+.btn.warn {
+  background: var(--warn);
+  color: #261b00;
+  box-shadow: 0 8px 20px rgba(255, 209, 102, 0.18);
 }
 
-.btn.bad{
-  background:var(--bad);
-  color:#1a0b0b;
-  box-shadow:0 10px 22px rgba(255,107,107,.15);
+.btn.bad {
+  background: var(--bad);
+  color: #1a0b0b;
+  box-shadow: 0 8px 20px rgba(255, 107, 107, 0.18);
 }
 
-.btn:disabled{
-  opacity:.55;
-  cursor:not-allowed;
+.btn:disabled,
+#btnArrive:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  filter: grayscale(0.15);
 }
 
-#btnArrive:disabled{
-  opacity:.60;
-  cursor:not-allowed;
-  filter:grayscale(.10);
+.btn-ico {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  margin-right: 8px;
+  align-items: center;
+  justify-content: center;
 }
 
-/* ---------- WeekCycle row ---------- */
-#weekCycleRow{
-  display:flex;
-  align-items:center;
-  gap:10px;
-  flex-wrap:nowrap;
+.btn-ico svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
 }
 
-#weekCycleRow #weekCycle{
-  flex:1;
-  min-width:120px;
+.btn.secondary .btn-ico {
+  color: var(--accent);
 }
 
-#weekCycle option{
-  background:#001F3D;
-  color:#ffffff;
+/* =========================================================
+   WeekCycle & Actions Panel
+   ========================================================= */
+#weekCycleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#weekCycleRow #weekCycle {
+  flex: 1;
+  min-width: 120px;
+}
+
+#weekCycle option {
+  background: var(--brand-950);
+  color: #ffffff;
 }
 
 #btnCheckIn,
-#btnCheckOut{
-  white-space:nowrap;
-  flex-shrink:0;
-  min-height:44px;
-  padding:10px 14px;
+#btnCheckOut {
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 10px 14px;
 }
 
-/* ---------- Toast ---------- */
-.toast{
-  position:fixed;
-  right:14px;
-  bottom:calc(96px + var(--safe-bot));
-  background:rgba(18,26,51,.95);
-  border:1px solid rgba(255,255,255,.10);
-  border-radius:16px;
-  padding:12px 14px;
-  max-width:360px;
-  box-shadow:var(--shadow);
-  display:none;
-  z-index:1000;
+.panel-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
-.toast strong{
-  display:block;
-  margin-bottom:4px;
+.panel-actions .btn {
+  width: 100%;
 }
 
-.toast p{
-  margin:0;
-  color:var(--muted);
-  font-size:12px;
-  line-height:1.35;
+/* =========================================================
+   Table & Responsive Wrapper
+   ========================================================= */
+.table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 -2px;
+  padding: 0 2px 7px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(91, 200, 255, 0.55) rgba(255, 255, 255, 0.06);
 }
 
-/* ---------- Actions panel ---------- */
-.panel-actions{
-  display:grid;
-  grid-template-columns:repeat(2, minmax(0, 1fr));
-  gap:10px;
+.table-wrapper::-webkit-scrollbar {
+  height: 6px;
 }
 
-.panel-actions .btn{
-  width:100%;
-  justify-content:center;
+.table-wrapper::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
 }
 
-/* ---------- Button icon ---------- */
-.btn-ico{
-  display:inline-flex;
-  width:18px;
-  height:18px;
-  margin-right:8px;
-  align-items:center;
-  justify-content:center;
+.table-wrapper::-webkit-scrollbar-thumb {
+  background: rgba(91, 200, 255, 0.55);
+  border-radius: 999px;
 }
 
-.btn-ico svg{
-  width:18px;
-  height:18px;
-  fill:currentColor;
+.table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 8px;
 }
 
-.btn.secondary{
-  color:var(--text);
+.table thead th {
+  padding: 0 10px 8px;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  text-align: left;
 }
 
-.btn.secondary .btn-ico{
-  color:var(--accent);
+.table tbody td {
+  padding: 12px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.10));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 10px 26px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  font-size: 14px;
 }
 
-/* ---------- Table ---------- */
-.table{
-  width:100%;
-  border-collapse:separate;
-  border-spacing:0 8px;
+.table tbody tr:hover td {
+  border-color: rgba(0, 128, 192, 0.35);
 }
 
-.table thead th{
-  padding:0 10px 6px;
-}
-
-.table tbody td{
-  border:1px solid rgba(255,255,255,.08);
-  background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.10));
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.05), 0 10px 26px rgba(0,0,0,.18);
-  backdrop-filter:blur(8px);
-  -webkit-backdrop-filter:blur(8px);
-}
-
-.table tbody tr:hover td{
-  border-color:rgba(0,128,192,.35);
-}
-
-/* ---------- Modal select ---------- */
-.modal select,
-.modal option{
-  color:#ffffff !important;
-}
-
-.modal option{
-  background:#003060;
-}
-
-.modal select{
-  background-color:rgba(255,255,255,0.08);
-}
-
-/* ---------- TDG Print Table Column Alignment ---------- */
+/* TDG Print Table Column Alignment */
 table tbody td:nth-child(4),
 table thead th:nth-child(4),
 table tbody td:nth-child(5),
 table thead th:nth-child(5),
 table tbody td:nth-child(6),
-table thead th:nth-child(6){
-  text-align:center;
+table thead th:nth-child(6) {
+  text-align: center;
 }
 
 /* =========================================================
-   Desktop / smaller tablet fallback
+   Modal & Toast
    ========================================================= */
-@media (max-width: 980px){
-  .layout{
-    grid-template-columns:1fr;
-  }
+.modal select,
+.modal option {
+  color: #ffffff;
 }
 
-@media (max-width: 720px){
-  .grid2,
-  .grid3{
-    grid-template-columns:1fr;
+.modal option {
+  background: var(--brand-900);
+}
+
+.modal select {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.toast {
+  position: fixed;
+  right: 14px;
+  bottom: calc(96px + var(--safe-bot));
+  background: rgba(18, 26, 51, 0.95);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 13px 16px;
+  max-width: 360px;
+  box-shadow: var(--shadow);
+  display: none;
+  z-index: 1000;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.toast strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 15px;
+}
+
+.toast p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* =========================================================
+   Responsive Breakpoints: Tablets & Desktops (<= 1024px)
+   ========================================================= */
+@media screen and (max-width: 1024px) {
+  .layout {
+    grid-template-columns: 1fr;
+    gap: 16px;
   }
 }
 
 /* =========================================================
-   iPad ONLY
+   Responsive Breakpoints: Mobile Devices (<= 767px)
    ========================================================= */
-@media only screen
-  and (min-device-width: 768px)
-  and (max-device-width: 1366px)
-  and (-webkit-min-device-pixel-ratio: 1){
-
-  html{
-    font-size:20px !important;
-    -webkit-text-size-adjust:100% !important;
+@media screen and (max-width: 767px) {
+  :root {
+    --gap: 10px;
+    --tap: 50px;
+    --radius: 16px;
+    --radius-sm: 12px;
   }
 
-  body{
-    font-size:20px !important;
+  .container {
+    padding-top: max(8px, var(--safe-top));
+    padding-bottom: max(20px, var(--safe-bot));
   }
 
-  .container{
-    width:100% !important;
-    max-width:100% !important;
-    padding:24px 24px 32px !important;
+  header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 6px 2px 14px;
   }
 
-  header{
-    padding:18px 6px 22px !important;
-    gap:18px !important;
+  .header-left {
+    width: 100%;
+    gap: 10px;
   }
 
-  .header-left{
-    gap:20px !important;
+  .logo {
+    height: 54px;
+    max-width: 34vw;
+    border-radius: 8px;
   }
 
-  .logo{
-    height:96px !important;
-    width:auto !important;
-  }
-
-  header h1{
-    font-size:42px !important;
-    line-height:1.15 !important;
-    white-space:normal !important;
-    overflow:visible !important;
-    text-overflow:unset !important;
+  header h1 {
+    white-space: normal;
+    word-break: break-word;
+    overflow: visible;
   }
 
   .tag,
-  .pill{
-    font-size:17px !important;
-    padding:12px 16px !important;
+  .pill {
+    font-size: 13px;
+    padding: 6px 10px;
   }
 
-  .layout{
-    grid-template-columns:1fr !important;
-    gap:20px !important;
-  }
-
-  .card{
-    border-radius:22px !important;
-  }
-
-  .card .hd{
-    padding:20px 22px !important;
-    gap:16px !important;
-  }
-
-  .card .bd{
-    padding:22px !important;
-  }
-
-  .card .hd h2,
-  .card .hd h3{
-    font-size:28px !important;
-    line-height:1.2 !important;
-    margin:0 !important;
-  }
-
-  .result h3{
-    font-size:22px !important;
-  }
-
-  .muted,
-  .help,
-  label{
-    font-size:17px !important;
-    line-height:1.6 !important;
-  }
-
-  .row{
-    gap:14px !important;
-  }
-
-  .grid2,
-  .grid3{
-    grid-template-columns:1fr !important;
-    gap:18px !important;
-  }
-
-  input,
-  textarea,
-  select{
-    min-height:60px !important;
-    font-size:20px !important;
-    padding:16px 18px !important;
-    border-radius:18px !important;
-  }
-
-  textarea{
-    min-height:160px !important;
-  }
-
-  .btn{
-    min-height:60px !important;
-    font-size:19px !important;
-    padding:14px 20px !important;
-    border-radius:18px !important;
-  }
-
-  #btnCheckIn,
-  #btnCheckOut,
-  #btnArrive{
-    min-height:60px !important;
-    font-size:18px !important;
-    padding:14px 18px !important;
-  }
-
-  #weekCycleRow{
-    display:flex !important;
-    flex-wrap:wrap !important;
-    gap:14px !important;
-  }
-
-  #weekCycleRow #weekCycle{
-    width:100% !important;
-    min-width:100% !important;
-    flex:none !important;
-  }
-
-  .panel-actions{
-    grid-template-columns:1fr 1fr !important;
-    gap:14px !important;
-  }
-
-  .table thead th{
-    font-size:16px !important;
-    padding:0 12px 10px !important;
-  }
-
-  .table tbody td{
-    font-size:17px !important;
-    padding:16px 12px !important;
-    line-height:1.5 !important;
-  }
-
-  .result{
-    padding:18px !important;
-    border-radius:18px !important;
-  }
-
-  .toast{
-    right:20px !important;
-    left:20px !important;
-    bottom:24px !important;
-    max-width:none !important;
-    padding:16px 18px !important;
-  }
-
-  .toast strong{
-    font-size:17px !important;
-  }
-
-  .toast p{
-    font-size:16px !important;
-  }
-}
-
-/* ---------- iPad landscape ---------- */
-@media only screen
-  and (min-device-width: 1024px)
-  and (max-device-width: 1366px)
-  and (orientation: landscape)
-  and (-webkit-min-device-pixel-ratio: 1){
-
-  .container{
-    padding:28px 32px 36px !important;
-  }
-
-  .layout{
-    grid-template-columns:minmax(0, 1.15fr) minmax(320px, 0.85fr) !important;
-    gap:24px !important;
-  }
-
-  .grid2{
-    grid-template-columns:repeat(2, minmax(0, 1fr)) !important;
-  }
-
-  .panel-actions{
-    grid-template-columns:repeat(4, minmax(0, 1fr)) !important;
-  }
-
-  header h1{
-    font-size:48px !important;
-  }
-}
-
-/* ---------- iPad portrait ---------- */
-@media only screen
-  and (min-device-width: 768px)
-  and (max-device-width: 1024px)
-  and (orientation: portrait)
-  and (-webkit-min-device-pixel-ratio: 1){
-
-  .container{
-    padding:22px 20px 30px !important;
-  }
-
-  header h1{
-    font-size:38px !important;
-  }
-
-  .layout,
   .grid2,
   .grid3,
-  .panel-actions{
-    grid-template-columns:1fr !important;
+  .panel-actions {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .card .hd {
+    padding: 13px 14px 11px;
+    gap: 8px;
+  }
+
+  .btn {
+    width: 100%;
+  }
+
+  #weekCycleRow {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+  }
+
+  #weekCycleRow #weekCycle {
+    grid-column: 1 / -1;
+  }
+
+  #btnCheckIn,
+  #btnCheckOut {
+    width: 100%;
+  }
+
+  /* Table fallback if not wrapped */
+  .table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .table thead th,
+  .table tbody td {
+    white-space: nowrap;
+  }
+
+  .toast {
+    left: max(12px, var(--safe-left));
+    right: max(12px, var(--safe-right));
+    bottom: max(12px, var(--safe-bot));
+    max-width: none;
   }
 }
 
 /* =========================================================
-   Mobile phones: iPhone / Samsung / Android
+   Responsive Breakpoints: Mid-size mobile (430px - 767px)
    ========================================================= */
-@media only screen and (max-width: 767px){
-
-  html{
-    font-size:18px !important;
-    -webkit-text-size-adjust:100% !important;
-  }
-
-  body{
-    font-size:18px !important;
-    overflow-x:hidden !important;
-  }
-
-  .container{
-    width:100% !important;
-    max-width:100% !important;
-    padding:14px 14px 24px !important;
-  }
-
-  header{
-    display:flex !important;
-    flex-direction:column !important;
-    align-items:flex-start !important;
-    justify-content:flex-start !important;
-    gap:12px !important;
-    padding:10px 0 16px !important;
-  }
-
-  .header-left{
-    width:100% !important;
-    display:flex !important;
-    align-items:center !important;
-    gap:12px !important;
-  }
-
-  .logo{
-    height:64px !important;
-    width:auto !important;
-    flex-shrink:0 !important;
-  }
-
-  header h1{
-    font-size:28px !important;
-    line-height:1.2 !important;
-    white-space:normal !important;
-    word-break:break-word !important;
-    overflow:visible !important;
-    text-overflow:unset !important;
-    margin:0 !important;
-  }
-
-  .tag,
-  .pill{
-    font-size:14px !important;
-    padding:8px 12px !important;
-    line-height:1.4 !important;
-  }
-
-  .layout{
-    display:grid !important;
-    grid-template-columns:1fr !important;
-    gap:14px !important;
-  }
-
-  .card{
-    border-radius:18px !important;
-  }
-
-  .card .hd{
-    padding:14px 14px 12px !important;
-    display:flex !important;
-    flex-direction:column !important;
-    align-items:flex-start !important;
-    gap:10px !important;
-  }
-
-  .card .bd{
-    padding:14px !important;
-  }
-
-  .card .hd h2,
-  .card .hd h3{
-    font-size:22px !important;
-    line-height:1.25 !important;
-    margin:0 !important;
-  }
-
-  .result h3{
-    font-size:19px !important;
-    line-height:1.3 !important;
-  }
-
-  .muted,
-  .help,
-  label{
-    font-size:15px !important;
-    line-height:1.55 !important;
-  }
-
-  .row{
-    display:flex !important;
-    flex-wrap:wrap !important;
-    gap:10px !important;
-    align-items:stretch !important;
-  }
-
-  .grid2,
-  .grid3{
-    display:grid !important;
-    grid-template-columns:1fr !important;
-    gap:12px !important;
-  }
-
-  input,
-  textarea,
-  select{
-    width:100% !important;
-    min-height:52px !important;
-    font-size:17px !important;
-    line-height:1.4 !important;
-    padding:14px 14px !important;
-    border-radius:14px !important;
-  }
-
-  textarea{
-    min-height:120px !important;
-  }
-
-  .btn{
-    width:100% !important;
-    min-height:52px !important;
-    font-size:17px !important;
-    line-height:1.2 !important;
-    padding:12px 14px !important;
-    border-radius:14px !important;
-  }
-
-  #btnCheckIn,
-  #btnCheckOut,
-  #btnArrive{
-    width:100% !important;
-    min-height:52px !important;
-    font-size:17px !important;
-    padding:12px 14px !important;
-  }
-
-  .panel-actions{
-    display:grid !important;
-    grid-template-columns:1fr !important;
-    gap:10px !important;
-  }
-
-  #weekCycleRow{
-    display:flex !important;
-    flex-wrap:wrap !important;
-    gap:10px !important;
-  }
-
-  #weekCycleRow #weekCycle{
-    width:100% !important;
-    min-width:100% !important;
-    flex:none !important;
-  }
-
-  .table{
-    display:block !important;
-    width:100% !important;
-    overflow-x:auto !important;
-    -webkit-overflow-scrolling:touch !important;
-    border-spacing:0 8px !important;
-  }
-
-  .table thead th{
-    font-size:14px !important;
-    white-space:nowrap !important;
-    padding:0 10px 8px !important;
-  }
-
-  .table tbody td{
-    font-size:15px !important;
-    line-height:1.45 !important;
-    padding:12px 10px !important;
-    white-space:nowrap !important;
-  }
-
-  .result{
-    padding:14px !important;
-    border-radius:16px !important;
-  }
-
-  .toast{
-    left:12px !important;
-    right:12px !important;
-    bottom:calc(12px + env(safe-area-inset-bottom, 0px)) !important;
-    max-width:none !important;
-    padding:14px !important;
-    border-radius:14px !important;
-  }
-
-  .toast strong{
-    font-size:15px !important;
-  }
-
-  .toast p{
-    font-size:14px !important;
-    line-height:1.5 !important;
-  }
-}
-
-/* ---------- iPhone safe area ---------- */
-@media only screen and (max-width: 767px) and (-webkit-min-device-pixel-ratio: 2){
-
-  body{
-    padding-bottom:env(safe-area-inset-bottom, 0px) !important;
-  }
-
-  .container{
-    padding-left:max(14px, env(safe-area-inset-left, 0px)) !important;
-    padding-right:max(14px, env(safe-area-inset-right, 0px)) !important;
-    padding-bottom:max(24px, env(safe-area-inset-bottom, 0px)) !important;
-  }
-
-  header{
-    padding-top:max(10px, env(safe-area-inset-top, 0px)) !important;
-  }
-}
-
-/* ---------- Small phones ---------- */
-@media only screen and (max-width: 390px){
-
-  html{
-    font-size:17px !important;
-  }
-
-  .container{
-    padding:12px 12px 20px !important;
-  }
-
-  .logo{
-    height:56px !important;
-  }
-
-  header h1{
-    font-size:24px !important;
-  }
-
-  .card .hd h2,
-  .card .hd h3{
-    font-size:20px !important;
-  }
-
-  .muted,
-  .help,
-  label{
-    font-size:14px !important;
-  }
-
-  input,
-  textarea,
-  select{
-    min-height:50px !important;
-    font-size:16px !important;
-    padding:12px 12px !important;
-  }
-
-  .btn{
-    min-height:50px !important;
-    font-size:16px !important;
-    padding:12px !important;
-  }
-
-  .table thead th{
-    font-size:13px !important;
-  }
-
-  .table tbody td{
-    font-size:14px !important;
-    padding:10px 8px !important;
-  }
-}
-
-/* ---------- Large phones ---------- */
-@media only screen and (min-width: 391px) and (max-width: 767px){
-
-  .container{
-    padding:16px 16px 24px !important;
-  }
-
-  header h1{
-    font-size:30px !important;
-  }
-
-  .card .hd h2,
-  .card .hd h3{
-    font-size:23px !important;
-  }
-
-  input,
-  textarea,
-  select{
-    min-height:54px !important;
-    font-size:17px !important;
-  }
-
-  .btn{
-    min-height:54px !important;
-    font-size:17px !important;
+@media screen and (min-width: 430px) and (max-width: 767px) {
+  .panel-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 /* =========================================================
-   Visual polish and mobile refinement layer
+   Responsive Breakpoints: Extra-small screens (<= 374px)
    ========================================================= */
-body{
-  font-family:
-    Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    Roboto, Helvetica, Arial, sans-serif;
-  background:
-    radial-gradient(circle at 12% -8%, rgba(0,128,192,.24), transparent 34rem),
-    radial-gradient(circle at 100% 18%, rgba(0,96,160,.16), transparent 28rem),
-    linear-gradient(180deg, var(--brand-950) 0%, #001a34 100%);
-}
-
-::selection{
-  background:rgba(0,128,192,.42);
-  color:#fff;
-}
-
-.card,
-.result,
-.toast,
-input,
-textarea,
-select,
-.btn{
-  transition:
-    border-color .18s ease,
-    background-color .18s ease,
-    box-shadow .18s ease,
-    transform .12s ease,
-    opacity .18s ease;
-}
-
-.card{
-  backdrop-filter:blur(16px) saturate(120%);
-  -webkit-backdrop-filter:blur(16px) saturate(120%);
-}
-
-input,
-textarea,
-select{
-  caret-color:#5bc8ff;
-}
-
-.btn:active:not(:disabled){
-  transform:translateY(1px) scale(.99);
-}
-
-.btn:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible{
-  outline:3px solid rgba(91,200,255,.42);
-  outline-offset:2px;
-}
-
-@media (hover:hover) and (pointer:fine){
-  .btn:hover:not(:disabled){
-    transform:translateY(-1px);
-    filter:brightness(1.08);
-  }
-}
-
-@media only screen and (max-width:767px){
-  :root{
-    --gap:10px;
-    --tap:50px;
-    --radius:16px;
+@media screen and (max-width: 374px) {
+  .logo {
+    height: 46px;
   }
 
-  html{
-    font-size:16px !important;
-    scroll-behavior:smooth;
-  }
-
-  body{
-    min-height:100dvh;
-    font-size:16px !important;
-    line-height:1.45;
-    background-attachment:scroll !important;
-    overscroll-behavior-y:auto;
-  }
-
-  .container{
-    padding-top:max(10px, var(--safe-top)) !important;
-    padding-right:max(12px, env(safe-area-inset-right, 0px)) !important;
-    padding-bottom:max(24px, var(--safe-bot)) !important;
-    padding-left:max(12px, env(safe-area-inset-left, 0px)) !important;
-  }
-
-  header{
-    gap:10px !important;
-    padding:6px 2px 14px !important;
-  }
-
-  .header-left{
-    gap:10px !important;
-  }
-
-  .logo{
-    height:54px !important;
-    max-width:34vw;
-    object-fit:contain;
-    border-radius:10px;
-  }
-
-  header h1{
-    font-size:clamp(23px, 7vw, 30px) !important;
-    line-height:1.12 !important;
-    letter-spacing:-.02em;
-    text-wrap:balance;
-  }
-
-  .tag,
-  .pill{
-    max-width:100%;
-    min-height:34px;
-    padding:7px 10px !important;
-    font-size:13px !important;
-    overflow:hidden;
-    text-overflow:ellipsis;
-  }
-
-  .layout{
-    gap:12px !important;
-  }
-
-  .card{
-    border-color:rgba(255,255,255,.12);
-    border-radius:16px !important;
-    background:
-      linear-gradient(180deg, rgba(255,255,255,.075), rgba(255,255,255,.035));
-    box-shadow:0 12px 32px rgba(0,10,28,.30);
-  }
-
-  .card .hd{
-    padding:13px 14px 11px !important;
-    gap:8px !important;
-  }
-
-  .card .bd{
-    padding:14px !important;
-  }
-
-  .card .hd h2,
-  .card .hd h3{
-    font-size:20px !important;
-    letter-spacing:-.01em;
-  }
-
-  .grid2,
-  .grid3{
-    gap:11px !important;
-  }
-
-  label{
-    margin-bottom:5px;
-    color:#bfd0ec !important;
-    font-size:14px !important;
-    font-weight:650;
-    letter-spacing:.01em;
-  }
-
-  .muted,
-  .help{
-    font-size:13px !important;
-    line-height:1.5 !important;
-  }
-
-  input,
-  textarea,
-  select{
-    min-height:50px !important;
-    padding:12px 13px !important;
-    border-radius:12px !important;
-    border-color:rgba(255,255,255,.15);
-    background:rgba(0,20,43,.66);
-    font-size:16px !important;
-    box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
-  }
-
-  input::placeholder,
-  textarea::placeholder{
-    color:rgba(234,242,255,.46);
-  }
-
-  input:focus,
-  textarea:focus,
-  select:focus{
-    border-color:#35b9f2;
-    box-shadow:
-      0 0 0 3px rgba(53,185,242,.18),
-      0 10px 24px rgba(0,16,36,.18);
-  }
-
-  textarea{
-    min-height:108px !important;
-  }
-
-  .btn{
-    min-height:50px !important;
-    padding:12px 14px !important;
-    border-radius:12px !important;
-    font-size:16px !important;
-    letter-spacing:.005em;
-    box-shadow:0 8px 18px rgba(0,16,36,.22);
-  }
-
-  .btn.secondary{
-    background:rgba(255,255,255,.085);
-    border-color:rgba(255,255,255,.16);
-  }
-
-  #weekCycleRow{
-    display:grid !important;
-    grid-template-columns:repeat(2, minmax(0, 1fr)) !important;
-    gap:9px !important;
-  }
-
-  #weekCycleRow #weekCycle{
-    grid-column:1 / -1;
-  }
-
-  #btnCheckIn,
-  #btnCheckOut{
-    width:100% !important;
-    min-width:0;
-  }
-
-  #btnArrive{
-    width:100% !important;
-  }
-
-  .result{
-    padding:13px !important;
-    border-style:solid;
-    border-color:rgba(53,185,242,.30);
-    border-radius:14px !important;
-    background:rgba(0,18,39,.44);
-  }
-
-  .result h3{
-    font-size:17px !important;
-  }
-
-  .table{
-    margin:0 -2px;
-    padding:0 2px 7px;
-    scrollbar-width:thin;
-    scrollbar-color:rgba(91,200,255,.55) rgba(255,255,255,.06);
-  }
-
-  .table::-webkit-scrollbar{
-    height:6px;
-  }
-
-  .table::-webkit-scrollbar-track{
-    background:rgba(255,255,255,.06);
-    border-radius:999px;
-  }
-
-  .table::-webkit-scrollbar-thumb{
-    background:rgba(91,200,255,.55);
-    border-radius:999px;
-  }
-
-  .table thead th{
-    font-size:12px !important;
-    letter-spacing:.03em;
-    text-transform:uppercase;
-  }
-
-  .table tbody td{
-    padding:11px 9px !important;
-    font-size:14px !important;
-    box-shadow:none;
-  }
-
-  .toast{
-    left:max(10px, env(safe-area-inset-left, 0px)) !important;
-    right:max(10px, env(safe-area-inset-right, 0px)) !important;
-    bottom:max(10px, var(--safe-bot)) !important;
-    padding:13px 14px !important;
-    border-radius:14px !important;
-    background:rgba(7,20,43,.96);
-    backdrop-filter:blur(18px);
-    -webkit-backdrop-filter:blur(18px);
-  }
-
-  .toast strong{
-    font-size:15px !important;
-  }
-
-  .toast p{
-    font-size:13px !important;
-  }
-}
-
-@media only screen and (min-width:430px) and (max-width:767px){
-  .panel-actions{
-    grid-template-columns:repeat(2, minmax(0, 1fr)) !important;
-  }
-}
-
-@media only screen and (max-width:374px){
-  .container{
-    padding-right:max(10px, env(safe-area-inset-right, 0px)) !important;
-    padding-left:max(10px, env(safe-area-inset-left, 0px)) !important;
-  }
-
-  .logo{
-    height:48px !important;
-  }
-
-  header h1{
-    font-size:22px !important;
+  header h1 {
+    font-size: 22px;
   }
 
   .card .hd,
-  .card .bd{
-    padding-right:12px !important;
-    padding-left:12px !important;
+  .card .bd {
+    padding-left: 10px;
+    padding-right: 10px;
   }
 }
 
-@media (prefers-reduced-motion:reduce){
+/* =========================================================
+   Accessibility: Reduced Motion
+   ========================================================= */
+@media (prefers-reduced-motion: reduce) {
   *,
   *::before,
-  *::after{
-    scroll-behavior:auto !important;
-    transition-duration:.01ms !important;
-    animation-duration:.01ms !important;
-    animation-iteration-count:1 !important;
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
   }
 }
