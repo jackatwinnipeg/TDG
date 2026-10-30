@@ -406,7 +406,7 @@
 </div>
     </template>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0"></script>
+    <script src="./js/vendor/supabase-js-2.111.0.js"></script>
     <script src="./js/supabaseConfig.js?v=20260912"></script>
     <script src="./js/supabaseClient.js?v=20260912"></script>
     <script src="./js/auth_supabase.js?v=20260912"></script>
@@ -590,6 +590,8 @@
             ? `RELOAD — ${location || "Linde Mcphillips Plant"}`
             : adjustment
               ? `TDG ADJUSTMENT — ${adjustmentReason || "Adjustment"}`
+            : TDG_CORE.isEmergency(record)
+              ? `EMERGENCY — ${location}`
             : location,
           accountNumber: safe(record?.account_number),
           delivered: reload || adjustment
@@ -644,7 +646,9 @@
         );
       }
 
-      function fillSheet(sheet, group, records, dailyLog = null, shift = null, openingKg = null) {
+      // vehicle: { opening, others } from TDG_CORE.vehicleContext (whole fleet on this truck).
+      function fillSheet(sheet, group, records, dailyLog = null, shift = null, vehicle = null) {
+        const openingKg = vehicle?.opening ?? null;
         const sorted = [...records].sort(
           (a, b) => getSortTimeValue(a) - getSortTimeValue(b)
         );
@@ -764,9 +768,13 @@
         setProductCheckboxes(sheet, sorted);
 
         let runningKg = tdgStartKg;
+        // Other drivers' records on this vehicle the same day, applied in time order (not printed).
+        const waiting = (vehicle?.others || []).slice();
 
         const displayRows = sorted.map((record) => {
           const row = buildDisplayRow(record);
+          const due = TDG_CORE.minutesOf(record?.arrival_time || record?.completed_at);
+          while (waiting.length && waiting[0].minutes <= due) runningKg += waiting.shift().kg;
 
           if (row.reload) {
             runningKg += row.reloadKg;
@@ -976,8 +984,8 @@ if (!sess) return;
             if (!sheet) continue;
 
             const context=await TDG_CORE.loadShiftContext(window.supabaseClient,records[0].owner_id,group.date,records[0].vehicle_no);
-            const opening=await TDG_CORE.openingBalance(window.supabaseClient,records[0].owner_id,group.date,records[0].vehicle_no,records);
-            fillSheet(sheet, group, records, context.dailyLog,context.shift,opening);
+            const vehicle=await TDG_CORE.vehicleContext(window.supabaseClient,records[0].owner_id,group.date,records[0].vehicle_no,records);
+            fillSheet(sheet, group, records, context.dailyLog,context.shift,vehicle);
             container.appendChild(fragment);
             pageCount += 1;
           }

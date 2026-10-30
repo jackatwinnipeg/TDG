@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reload Log</title>
+<script src="./js/tdg_core.js?v=20260912"></script>
+<script src="./js/vendor/supabase-js-2.111.0.js"></script>
+<script src="./js/supabaseConfig.js?v=20260912"></script>
+<script src="./js/supabaseClient.js?v=20260912"></script>
+<script src="./js/auth_supabase.js?v=20260912"></script>
+<style>
+  /*
+   * "Microbulk Pumper's Log - for Tanker fills" (RELOAD_LOG_PROPOSAL.md 3.1), the layout of
+   * mockups/reload-log-form.html measured from the 300 dpi scan: Letter landscape, Calibri 11pt
+   * (Carlito has the same metrics), header row 15pt, 20 body rows of 21pt, table 9.91in wide.
+   */
+  /* Carlito is bundled (assets/fonts/carlito, SIL OFL) so phones without Calibri print the same widths, offline too. */
+  @font-face { font-family: "Carlito"; src: url("./assets/fonts/carlito/Carlito-Regular.ttf") format("truetype"); font-weight: 400; font-style: normal; }
+  @font-face { font-family: "Carlito"; src: url("./assets/fonts/carlito/Carlito-Bold.ttf") format("truetype"); font-weight: 700; font-style: normal; }
+  @font-face { font-family: "Carlito"; src: url("./assets/fonts/carlito/Carlito-Italic.ttf") format("truetype"); font-weight: 400; font-style: italic; }
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { background: #fff; color: #000; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  #status { margin: 16px; color: #5a6b80; }
+  #status.error { color: #b42318; }
+
+  .sheet { width: 11in; height: 8.5in; margin: 0 auto; padding-top: 1.374in; overflow: hidden; background: #fff; }
+
+  table.log {
+    width: 9.91in; margin: 0 auto;
+    border-collapse: collapse; table-layout: fixed;
+    font-family: Calibri, Carlito, "Segoe UI", Arial, sans-serif;
+    font-size: 11pt; line-height: 1.22; color: #000;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  table.log td, table.log th {
+    padding: 0 0.03in 1px; vertical-align: bottom;
+    white-space: nowrap; overflow: hidden; text-overflow: clip;
+    font-weight: normal;
+  }
+  tr.r-title td, tr.r-week td { height: 15pt; }
+  tr.r-gap td { height: 5pt; padding: 0; }
+  table.log .title { font-weight: bold; text-decoration: underline; text-underline-offset: 2px; text-decoration-skip-ink: none; }
+  table.log .label-right { text-align: right; }
+  table.log .blank-line { border-bottom: 1px solid #000; padding-left: 0.223in; }
+  tr.r-head th { height: 15pt; border: 1px solid #000; font-weight: bold; text-align: center; }
+  tr.r-body td { height: 21pt; border: 1px solid #000; text-align: center; }
+  tr.r-body td.c-driver { text-align: left; padding-left: 0.06in; }
+  tr.r-body td.c-product { font-style: italic; }
+  tr.r-head th.c-jde, tr.r-head th.c-by { background: #000; color: #fff; }
+  tr.r-head th.c-by { text-align: left; padding-left: 0.04in; }
+  tr.r-body td.c-jde, tr.r-body td.c-by { background: #e0e0e0; }
+  table.log .c-jde { border-right: 1px dotted #a6a6a6; }
+  table.log .c-by { border-left: 1px dotted #a6a6a6; }
+
+  @page { size: letter landscape; margin: 0; }
+  @media print {
+    #status { display: none; }
+    .sheet { break-after: page; }
+    .sheet:last-child { break-after: auto; }
+  }
+</style>
+</head>
+<body>
+<p id="status" class="no-print">Loading…</p>
+<div id="pages"></div>
+<script>
+(function () {
+  "use strict";
+  // The app saves the sheet before opening this page (js/app/reloadlog.js):
+  // { location, driver, rows: [{ date, time, tanker, kg }] }, rows already in date and time order.
+  const KEY = "tdg_reload_log_v1";
+  const ROWS_PER_PAGE = 20;
+  const COLUMNS = [
+    { key: "date", label: "Date", width: 1.20, cls: "c-date" },
+    { key: "time", label: "Time", width: 1.24, cls: "c-time" },
+    { key: "driver", label: "Driver Name", width: 1.65, cls: "c-driver" },
+    { key: "tanker", label: "LCI Tanker #", width: 1.19, cls: "c-tanker" },
+    { key: "product", label: "Product", width: 0.91, cls: "c-product" },
+    { key: "kg", label: "Volume filled (kg)", width: 1.32, cls: "c-volume" },
+    { key: "jde", label: "Entered in JDE", width: 1.63, cls: "c-jde" },
+    { key: "by", label: "by:", width: 0.77, cls: "c-by" },
+  ];
+  const PRODUCT = "LCO2"; // printed on every row, also the empty ones, like the paper sheet
+
+  function el(tag, attrs, text) {
+    const node = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) node.setAttribute(k, v);
+    if (text != null) node.textContent = String(text);
+    return node;
+  }
+
+  // "for the week of" stays blank (decision 4); Location is the plant's city (decision 5).
+  function buildSheet(location, driver, rows) {
+    const sheet = el("section", { class: "sheet" });
+    const table = el("table", { class: "log" });
+    const colgroup = el("colgroup");
+    COLUMNS.forEach((c) => colgroup.appendChild(el("col", { style: `width:${c.width}in` })));
+    table.appendChild(colgroup);
+    const tbody = el("tbody");
+
+    const rTitle = el("tr", { class: "r-title" });
+    rTitle.appendChild(el("td", { colspan: 4, class: "title" }, "Microbulk Pumper's Log - for Tanker fills"));
+    rTitle.appendChild(el("td", { class: "label-right" }, "Location:"));
+    rTitle.appendChild(el("td", { colspan: 3, class: "blank-line" }, location || ""));
+    tbody.appendChild(rTitle);
+    const rWeek = el("tr", { class: "r-week" });
+    rWeek.appendChild(el("td", { colspan: 3, class: "label-right" }, "for the week of:"));
+    rWeek.appendChild(el("td", { colspan: 2, class: "blank-line" }, ""));
+    rWeek.appendChild(el("td", { colspan: 3 }));
+    tbody.appendChild(rWeek);
+    const rGap = el("tr", { class: "r-gap" });
+    rGap.appendChild(el("td", { colspan: 8 }));
+    tbody.appendChild(rGap);
+    const rHead = el("tr", { class: "r-head" });
+    COLUMNS.forEach((c) => rHead.appendChild(el("th", { class: c.cls, scope: "col" }, c.label)));
+    tbody.appendChild(rHead);
+
+    for (let i = 0; i < ROWS_PER_PAGE; i++) {
+      const row = rows[i];
+      const tr = el("tr", { class: "r-body" });
+      COLUMNS.forEach((c) => {
+        let value = "";
+        if (c.key === "product") value = PRODUCT;
+        else if (row && c.key === "driver") value = driver;
+        else if (row && c.key === "kg") value = Math.trunc(Number(row.kg) || 0);
+        else if (row && c.key !== "jde" && c.key !== "by") value = row[c.key] ?? "";
+        tr.appendChild(el("td", { class: c.cls }, value));
+      });
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    sheet.appendChild(table);
+    return sheet;
+  }
+
+  // 20 rows a page; more reloads continue on the next page with the same header.
+  function render(data) {
+    const rows = Array.isArray(data?.rows) ? data.rows : [];
+    const pages = document.getElementById("pages");
+    pages.replaceChildren();
+    const count = Math.max(1, Math.ceil(rows.length / ROWS_PER_PAGE));
+    for (let p = 0; p < count; p++) pages.appendChild(buildSheet(data?.location, data?.driver || "", rows.slice(p * ROWS_PER_PAGE, (p + 1) * ROWS_PER_PAGE)));
+    return count;
+  }
+  window.ReloadLogForm = { render, ROWS_PER_PAGE, COLUMNS };
+
+  const status = document.getElementById("status");
+  (window.TDG_AUTH?.requireAuthAsync?.() || Promise.resolve(null)).then((session) => {
+    if (!session) return;
+    let data = null;
+    try { data = JSON.parse(window.TDG_STORAGE.getItem(KEY) || "null"); } catch {}
+    if (!data || !Array.isArray(data.rows)) { status.className = "error"; status.textContent = "No reloads to print. Open the Reload Log in the app again."; return; }
+    const pages = render(data);
+    if (data.fileName) document.title = String(data.fileName).replace(/\.pdf$/, "");
+    // Ready (and printable) once the sheet's fonts are in, so the first print has the right widths.
+    const fonts = ["11pt Carlito", "bold 11pt Carlito", "italic 11pt Carlito"].map((f) => document.fonts?.load(f));
+    return Promise.all(fonts).catch(() => {}).then(() => {
+      status.textContent = `Ready · ${data.rows.length} reload${data.rows.length === 1 ? "" : "s"} · ${pages} page${pages === 1 ? "" : "s"}`;
+    });
+  }, (error) => { status.className = "error"; status.textContent = error.message; });
+})();
+</script>
+</body>
+</html>

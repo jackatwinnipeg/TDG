@@ -231,8 +231,9 @@
         <thead>
           <tr>
             <th style="width: 25%">Date/Time</th>
-            <th style="width: 25%">Amount</th>
-            <th style="width: 50%">Notes</th>
+            <th style="width: 15%">Amount</th>
+            <th style="width: 20%">Driver</th>
+            <th style="width: 40%">Notes</th>
           </tr>
         </thead>
         <tbody id="logBody"></tbody>
@@ -244,7 +245,7 @@
       <button class="btn" type="button" onclick="window.print()">Print</button>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0"></script>
+    <script src="./js/vendor/supabase-js-2.111.0.js"></script>
     <script src="./js/supabaseConfig.js?v=20260912"></script>
     <script src="./js/supabaseClient.js?v=20260912"></script>
     <script src="./js/auth_supabase.js?v=20260912"></script>
@@ -448,11 +449,13 @@
         $("address").value = addr;
       }
 
-      function createRow(date, amount, notes) {
+      // Driver column: who made each delivery (ANDROID_APP_PROPOSAL.md decision 19).
+      function createRow(date, amount, driver, notes) {
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td>${TDG_CORE.escapeHtml(date)}</td>
           <td>${TDG_CORE.escapeHtml(amount)}</td>
+          <td>${TDG_CORE.escapeHtml(driver)}</td>
           <td>${TDG_CORE.escapeHtml(notes)}</td>
         `;
         return tr;
@@ -488,13 +491,14 @@
             createRow(
               getDisplayDate(rec),
               getDisplayAmount(rec),
+              safe(rec.driver_name ?? rec.driverName ?? rec.raw?.driverName ?? ""),
               getDisplayNotes(rec)
             )
           );
         }
 
         for (let i = sortedRows.length; i < maxRows; i++) {
-          tbody.appendChild(createRow("", "", ""));
+          tbody.appendChild(createRow("", "", "", ""));
         }
       }
 

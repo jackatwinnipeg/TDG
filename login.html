@@ -1,166 +1,91 @@
 <!doctype html>
-<html lang="zh-CN">
-  <head>
-<script src="./js/tdg_core.js?v=20260912"></script>
-    <meta charset="utf-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, viewport-fit=cover"
-    />
-    <meta name="color-scheme" content="dark" />
-    <meta name="theme-color" content="#0b1020" />
-    <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="stylesheet" href="./css/style.css" />
-    <title>TDG Log - Login</title>
-    <style>
-      .login-wrap {
-        max-width: 480px;
-        margin: 0 auto;
-        padding: 18px;
-      }
-      .brand {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin: 16px 0 8px;
-      }
-      .brand img {
-        width: 120px;
-        border-radius: 14px;
-      }
-      .muted {
-        opacity: 0.75;
-      }
-      .row2 {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 10px;
-      }
-      .btn.full {
-        width: 100%;
-      }
-      .tiny {
-        font-size: 12px;
-        opacity: 0.7;
-      }
-      .error {
-        margin-top: 10px;
-        padding: 10px 12px;
-        border-radius: 14px;
-        border: 1px solid rgba(255, 80, 80, 0.25);
-        background: rgba(255, 0, 0, 0.08);
-      }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <main class="login-wrap">
-        <section class="card" aria-label="Login">
-          <div class="hd">
-            <div class="brand">
-              <img src="./assets/linde-logo.jpg" alt="Logo" />
-              <div>
-                <div class="tag">Ez-Lazy TDG Daily Log</div>
-                <h1 style="margin: 6px 0 0; font-size: 20px">Login</h1>
-                <div class="muted" style="margin-top: 6px">
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="bd">
-            <div class="grid2">
-              <div>
-                <label for="username">Username</label>
-                <input
-                  id="username"
-                  autocomplete="username"
-                  
-                />
-              </div>
-              <div>
-                <label for="password">Password</label>
-                <input
-                  id="password"
-                  type="password"
-                  autocomplete="current-password"
-                 
-                />
-              </div>
-            </div>
-
-            <div class="row2" style="margin-top: 12px">
-              <button class="btn ok full" id="btnLogin" type="button">
-                On-Duty
-              </button>
-              <button
-                class="btn secondary full"
-                id="btnToAdmin"
-                type="button"
-                title="需要 admin 权限"
-              >
-                Admin Panel
-              </button>
-            </div>
-
-            <div id="msg" style="display: none" class="error"></div>
-
-            <div class="divider"></div>
-            <div class="tiny">
-             
-            </div>
-          </div>
-        </section>
+<html lang="en" data-ui="web">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#005a9c">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./favicon.ico" sizes="any">
+  <link rel="stylesheet" href="./css/app.css?v=1">
+  <link rel="stylesheet" href="./css/web.css?v=1" data-web>
+  <script data-web>try { const q = new URLSearchParams(location.search).get("ui"); if (q === "web" || q === "app") localStorage.setItem("tdg_app:ui", q); const p = localStorage.getItem("tdg_app:ui"); if (p ? p === "web" : document.documentElement.dataset.ui === "web") document.documentElement.classList.add("web"); } catch {}</script>
+  <title>Linde TDG Log · Sign In</title>
+  <script>
+    // Same appearance setting as the app (More → Appearance).
+    try { const t = localStorage.getItem("tdg_app:theme"); if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t); } catch {}
+  </script>
+</head>
+<body>
+  <div class="device">
+    <div class="app auth">
+      <main class="content">
+        <form class="login" id="loginForm" novalidate>
+          <img class="login-logo" src="./assets/linde-logo.jpg" alt="Linde">
+          <p class="w-eyebrow" data-web>Welcome to</p>
+          <h1>Linde TDG Log</h1>
+          <p class="sub">Sign in to start your day</p>
+          <div class="field"><label class="label" for="username">Driver Number</label>
+            <input class="input" id="username" autocomplete="username" autocapitalize="none" spellcheck="false"></div>
+          <div class="field"><label class="label" for="password">Password</label>
+            <button class="w-eye" id="btnEye" type="button" aria-label="Show password" aria-pressed="false" data-web><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path class="w-slash" d="M3 3l18 18"/></svg></button>
+            <input class="input" id="password" type="password" autocomplete="current-password"></div>
+          <label class="toggle-row"><input type="checkbox" id="remember"> Remember my Driver Number and password</label>
+          <p class="err" id="msg" role="alert"></p>
+          <button class="btn btn-primary block lg" id="btnLogin" type="submit" style="margin-top:8px">Sign In</button>
+          <p class="w-or" data-web><span>or</span></p>
+          <a class="btn block lg w-getapp" href="https://github.com/jackatwinnipeg/tdg-log-app/releases/latest" data-web><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg>Get the Android app</a>
+          <p class="hint" style="text-align:center;margin-top:24px">Version 1.0.4</p>
+        </form>
       </main>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0"></script>
-    <script src="./js/supabaseConfig.js?v=20260912"></script>
-    <script src="./js/supabaseClient.js?v=20260912"></script>
-    <script src="./js/auth_supabase.js?v=20260912"></script>
-    
-    <script>
+  </div>
+
+  <script src="./js/tdg_core.js?v=20260912"></script>
+  <script src="./js/vendor/supabase-js-2.111.0.js"></script>
+  <script src="./js/supabaseConfig.js?v=20260912"></script>
+  <script src="./js/supabaseClient.js?v=20260912"></script>
+  <script src="./js/auth_supabase.js?v=20260912"></script>
+  <script>
+    (() => {
       const $ = (id) => document.getElementById(id);
-      const showMsg = (t) => {
-        $("msg").style.display = "block";
-        $("msg").textContent = t;
-      };
-      const hideMsg = () => {
-        $("msg").style.display = "none";
+      let busy = false;
+      // shortcut: kept as plain text in this device's storage (opt-in); move to the phone's secure storage if that is not enough.
+      const REMEMBER = "tdg_app:remember";
+      const forget = () => { try { localStorage.removeItem(REMEMBER); } catch {} };
+      try {
+        const saved = JSON.parse(localStorage.getItem(REMEMBER));
+        if (saved) { $("username").value = saved.u; $("password").value = saved.p; $("remember").checked = true; }
+      } catch {}
+      $("remember").addEventListener("change", () => { if (!$("remember").checked) forget(); });
+
+      async function signIn() {
+        if (busy) return;
+        // Drivers sign in with their Driver Number only (ANDROID_APP_PROPOSAL.md decision 27).
+        if ($("username").value.includes("@")) { $("msg").textContent = "Sign in with your Driver Number."; return; }
+        busy = true;
         $("msg").textContent = "";
-      };
-
-      async function doLogin(goTo) {
-        hideMsg();
-
-        const u = $("username").value;
-        const p = $("password").value;
-
-        const r = await window.TDG_AUTH.authenticate(u, p);
-        if (!r.ok) return showMsg(r.msg || "登录失败");
-
+        $("btnLogin").disabled = true;
         try {
-          /* 每日首次登录从 Supabase 同步 */
-          if (window.TDG_SYNC?.ensureDailyPullAfterLogin) {
-            await window.TDG_SYNC.ensureDailyPullAfterLogin();
+          const r = await window.TDG_AUTH.authenticate($("username").value, $("password").value);
+          if (!r.ok) {
+            $("msg").textContent = navigator.onLine ? r.msg || "Sign-in failed." : "No internet connection. Sign-in needs a connection.";
+            return;
           }
-        } catch (err) {
-          showMsg("云端数据同步失败: " + err.message);
-          return;
+          if ($("remember").checked) {
+            try { localStorage.setItem(REMEMBER, JSON.stringify({ u: $("username").value, p: $("password").value })); } catch {}
+          } else forget();
+          window.TDG_AUTH.syncProfileToLegacyLS?.();
+          // Admin tools are reached from More by admin accounts; there is no separate entry here.
+          window.location.href = window.TDG_AUTH.getPostLoginRedirect("./index.html");
+        } finally {
+          busy = false;
+          $("btnLogin").disabled = false;
         }
-
-        window.TDG_AUTH.syncProfileToLegacyLS();
-        window.location.href =
-          goTo || window.TDG_AUTH.getPostLoginRedirect("./index.html");
       }
 
-      $("btnLogin").addEventListener("click", () => doLogin());
-      $("btnToAdmin").addEventListener("click", async () => {
-        await doLogin("./admin.html");
-      });
-
-      document.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") $("btnLogin").click();
-      });
-    </script>
-  </body>
+      $("loginForm").addEventListener("submit", (e) => { e.preventDefault(); signIn(); });
+    })();
+  </script>
+  <script data-web>(() => { if (!document.documentElement.classList.contains("web")) return; const $ = (id) => document.getElementById(id), pw = $("password"); $("username").placeholder = "Enter your driver number"; pw.placeholder = "Enter your password"; pw.after($("btnEye")); $("btnEye").addEventListener("click", (e) => { const show = pw.type === "password"; pw.type = show ? "text" : "password"; e.currentTarget.setAttribute("aria-pressed", show); e.currentTarget.setAttribute("aria-label", show ? "Hide password" : "Show password"); }); })();</script>
+</body>
 </html>

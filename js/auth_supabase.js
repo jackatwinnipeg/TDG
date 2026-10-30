@@ -173,6 +173,28 @@
     } catch {}
   }
 
+  // No answer from the server (no signal) is not a refused sign-in (ANDROID_APP_PROPOSAL.md decision 1).
+  const unreachable = (error) =>
+    error?.name === "AuthRetryableFetchError" ||
+    /failed to fetch|networkerror|load failed|network request failed/i.test(String(error?.message || ""));
+
+  // The account last signed in on this phone keeps working with its saved profile; it is
+  // checked again with the server once the connection is back (TOKEN_REFRESHED below).
+  function offlineSession(userId = null) {
+    let profile = null;
+    try {
+      profile = JSON.parse(localStorage.getItem(LS_TDG_PROFILE) || "null");
+    } catch {}
+    if (!profile?.id || profile.is_active === false || (userId && profile.id !== userId)) {
+      clearAuthCache();
+      return null;
+    }
+    const session = buildTDGSession({ profile, user: { id: profile.id, email: profile.email } });
+    setSession(session);
+    TDG_CORE.bindUser(session.userId);
+    return session;
+  }
+
   async function refreshSessionFromSupabase() {
     const sb = getSupabaseClient();
     if (!sb?.auth) {
@@ -181,6 +203,7 @@
     }
 
     const { data: sessionData, error: sessionError } = await sb.auth.getSession();
+    if (unreachable(sessionError)) return offlineSession();
     if (sessionError || !sessionData?.session) {
       clearAuthCache();
       return null;
@@ -190,6 +213,7 @@
     // sessionStorage record alone is never sufficient for route access.
     const { data: userData, error: userError } = await sb.auth.getUser();
     const user = userData?.user;
+    if (unreachable(userError)) return offlineSession(sessionData.session.user?.id);
     if (userError || !user) {
       await clearInvalidSupabaseSession();
       return null;
@@ -209,6 +233,7 @@
       syncProfileToLegacyLS();
       return session;
     } catch (error) {
+      if (unreachable(error)) return offlineSession(user.id);
       console.warn("Unable to validate the TDG profile:", error?.message || error);
       clearAuthCache();
       return null;
@@ -224,25 +249,27 @@
       return { ok: false, msg: "Supabase client not initialized" };
     }
     if (!loginInput || !suppliedPassword) {
-      return { ok: false, msg: "请输入 Driver Number 和密码" };
+      return { ok: false, msg: "Enter your Driver Number and password." };
     }
 
     clearAuthCache();
 
     try {
       const response=await sb.functions.invoke('tdg-login',{body:{login:loginInput,password:suppliedPassword}});
-      if(response.error||!response.data?.session)return {ok:false,msg:'登录失败，请检查账号、密码或稍后重试'};
+      // No answer at all (no connection, server not reachable) is not a wrong password.
+      if(response.error&&!response.error.context?.status)return {ok:false,msg:`No connection to the server. Check the internet connection and try again. (${response.error.message||response.error.name||'network error'})`};
+      if(response.error||!response.data?.session)return {ok:false,msg:'Sign-in failed. Check the Driver Number and password, or try again later.'};
       const {data,error}=await sb.auth.setSession(response.data.session);
 
       if (error || !data?.user) {
         clearAuthCache();
-        return { ok: false, msg: error?.message || "登录失败" };
+        return { ok: false, msg: error?.message || "Sign-in failed." };
       }
 
       const profile = await fetchProfileByUserId(data.user.id);
       if (!profile || profile.is_active === false) {
         await clearInvalidSupabaseSession();
-        return { ok: false, msg: "用户资料不存在或用户已停用" };
+        return { ok: false, msg: "This account has no profile or is no longer active." };
       }
 
       const session = buildTDGSession({ profile, user: data.user });
@@ -260,7 +287,7 @@
       return { ok: true, user: profile };
     } catch (error) {
       clearAuthCache();
-      return { ok: false, msg: `登录失败: ${error?.message || error}` };
+      return { ok: false, msg: `Sign-in failed: ${error?.message || error}` };
     }
   }
 
@@ -275,7 +302,7 @@
 
     if(session.mustChangePassword&&!location.pathname.endsWith("/change_password.html")){location.replace(appRelative("change_password.html"));return null;}
     if (Array.isArray(roles) && roles.length && !roles.includes(session.role)) {
-      alert("权限不足（Access Denied）");
+      alert("Access denied.");
       window.location.replace(appRelative("index.html"));
       return null;
     }

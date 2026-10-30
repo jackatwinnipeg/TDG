@@ -1,22 +1,20 @@
 /* /js/admin.js
- * Supabase-first Admin Panel
- * - Users: uses public.tdg_profiles
- * - Auth guard: uses Supabase Auth directly
- * - Customers: uses public.tdg_customers
- * - Create / Update / Delete User: via Edge Functions / Supabase
+ * Admin page (website only, Admin accounts only; ROLES_PROPOSAL.md decisions 6, 8, 13):
+ * - Users: public.tdg_profiles, the five roles
+ * - Create / update / deactivate users through the new site's Edge Functions
+ *   (tdg-admin-create-user, tdg-admin-update-user); the current site keeps admin-*.
+ * - Customers and reload plants moved to the Customers page (js/app/customers.js).
  *
  * IMPORTANT:
  * - username === driver_number
  */
 (() => {
   "use strict";
-  console.log("admin.js loaded");
 
   const $ = (id) => document.getElementById(id);
   const on = (el, ev, fn, opts) => el && el.addEventListener(ev, fn, opts);
   const safe = (v) => String(v ?? "").trim();
   const lower = (v) => safe(v).toLowerCase();
-  const nowIso = () => new Date().toISOString();
 
   const escapeHtml = (s) =>
     String(s ?? "")
@@ -26,63 +24,30 @@
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#039;");
 
-  let currentProfile = null;
-  let custPage = 1;
-  const CUST_PAGE_SIZE = 5;
+  const SIGNED_OUT = "Your sign-in has expired. Please sign in again.";
+  const ROLES = [
+    ["admin", "Admin"],
+    ["supervisor", "Supervisor"],
+    ["manager", "Manager"],
+    ["driver", "Driver"],
+    ["viewer", "Viewer"],
+  ];
+  const roleLabel = (r) => (ROLES.find(([k]) => k === r) || [r, r])[1];
 
   function getSb() {
     const sb = window.supabaseClient;
-    if (!sb?.from || !sb?.auth) {
-      throw new Error("Supabase client not initialized");
-    }
+    if (!sb?.from || !sb?.auth) throw new Error("Supabase client not initialized");
     return sb;
-  }
-
-  async function getSbSession() {
-    const sb = getSb();
-    const { data, error } = await sb.auth.getSession();
-    if (error) throw error;
-    return data?.session || null;
-  }
-
-  async function getAccessToken() {
-    const sb = getSb();
-
-    const {
-      data: { session },
-      error: sessionError,
-    } = await sb.auth.getSession();
-
-    if (sessionError || !session?.access_token) {
-      throw new Error("登录已失效，请重新登录");
-    }
-
-    const {
-      data: { user },
-      error: userError,
-    } = await sb.auth.getUser();
-
-    if (userError || !user) {
-      throw new Error("登录已失效，请重新登录");
-    }
-
-    return session.access_token;
   }
 
   async function requireAdminPageAccess() {
     const sb = getSb();
-    const tdgSession = await window.TDG_AUTH?.requireAuthAsync?.({
-      roles: ["admin"],
-    });
+    const tdgSession = await window.TDG_AUTH?.requireAuthAsync?.({ roles: ["admin"] });
     if (!tdgSession) return false;
 
-    const {
-      data: { user },
-      error: userError,
-    } = await sb.auth.getUser();
-
+    const { data: { user }, error: userError } = await sb.auth.getUser();
     if (userError || !user) {
-      alert("登录已失效，请重新登录");
+      alert(SIGNED_OUT);
       window.location.replace("./login.html");
       return false;
     }
@@ -92,385 +57,143 @@
       .select("id, username, display_name, role, email, is_active")
       .eq("id", user.id)
       .single();
-
     if (profileError || !profile) {
-      alert("当前用户资料不存在，请重新登录");
+      alert("Your account was not found. Please sign in again.");
       window.location.replace("./login.html");
       return false;
     }
-
     if (profile.role !== "admin" || !profile.is_active) {
-      alert("没有权限访问此页面");
+      alert("Only admin accounts can open this page.");
       window.location.replace("./index.html");
       return false;
     }
 
-    currentProfile = profile;
-
-    if ($("who")) {
-      $("who").textContent = `当前登录：${profile.display_name || profile.username}（${profile.role}）`;
-    }
-
-    on($("btnLogout"), "click", async () => {
-      await window.TDG_AUTH.logout();
-    });
-
+    if ($("who")) $("who").textContent = `Signed in: ${profile.display_name || profile.username} (${roleLabel(profile.role)})`;
+    on($("btnLogout"), "click", async () => { await window.TDG_AUTH.logout(); });
     return true;
   }
 
- function canonicalEmailFromDriverNumber(driverNumber, email = "") {
-  const normalizedEmail = safe(email).toLowerCase();
-  if (!normalizedEmail) {
-    throw new Error("请填写真实企业邮箱");
-  }
-  return normalizedEmail;
-}
+  // Edge Function call with the admin's session; a 401 refreshes the session and retries once.
+  async function callFn(name, payload) {
+    const sb = getSb();
+    const base = String(window.SUPABASE_URL || "").replace(/\/+$/, "");
+    const anonKey = String(window.SUPABASE_ANON_KEY || "").trim();
+    if (!base) throw new Error("SUPABASE_URL missing");
+    if (!anonKey) throw new Error("SUPABASE_ANON_KEY missing");
 
-  async function callFn(name, payload, { method = "POST" } = {}) {
-  const sb = getSb();
-
-  const base = String(window.SUPABASE_URL || "").replace(/\/+$/, "");
-  const anonKey = String(window.SUPABASE_ANON_KEY || "").trim();
-
-  if (!base) {
-    throw new Error("SUPABASE_URL missing");
-  }
-
-  if (!anonKey) {
-    throw new Error("SUPABASE_ANON_KEY missing");
-  }
-
-  async function readValidSession({ refresh = false } = {}) {
-    if (refresh) {
-      console.log("[callFn] refreshing Supabase session...");
-
-      const { data, error } = await sb.auth.refreshSession();
-
-      if (error) {
-        console.error("[callFn] refreshSession failed =", error);
-        throw new Error(
-          "登录状态刷新失败，请重新登录：" +
-            (error.message || "Unknown auth error")
-        );
-      }
-
+    async function readSession(refresh = false) {
+      const { data, error } = refresh ? await sb.auth.refreshSession() : await sb.auth.getSession();
+      if (error) throw new Error(`${SIGNED_OUT} (${error.message || "Unknown auth error"})`);
       return data?.session || null;
     }
 
-    const { data, error } = await sb.auth.getSession();
-
-    if (error) {
-      console.error("[callFn] getSession failed =", error);
-      throw new Error(
-        "无法读取登录状态：" +
-          (error.message || "Unknown auth error")
-      );
-    }
-
-    return data?.session || null;
-  }
-
-  async function send(session) {
-    const token = session?.access_token;
-
-    if (!token) {
-      throw new Error("登录已失效，请重新登录");
-    }
-
-    const url = `${base}/functions/v1/${name}`;
-
-    console.log("[callFn] function =", name);
-    console.log("[callFn] url =", url);
-    console.log("[callFn] method =", method);
-    console.log("[callFn] has token =", !!token);
-    console.log("[callFn] has apikey =", !!anonKey);
-
-    let response;
-
-    try {
-      response = await fetch(url, {
-        method,
-
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-
-          // Supabase API Gateway key
-          apikey: anonKey,
-
-          // 当前登录管理员的 Supabase JWT
-          Authorization: `Bearer ${token}`,
-        },
-
-        body:
-          method === "GET"
-            ? undefined
-            : JSON.stringify(payload ?? {}),
-      });
-    } catch (error) {
-      console.error("[callFn] network error =", error);
-
-      throw new Error(
-        "网络请求失败，无法连接 Edge Function"
-      );
-    }
-
-    let body = null;
-
-    const responseText = await response.text();
-
-    if (responseText) {
+    async function send(session) {
+      const token = session?.access_token;
+      if (!token) throw new Error(SIGNED_OUT);
+      let response;
       try {
-        body = JSON.parse(responseText);
+        response = await fetch(`${base}/functions/v1/${name}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json", apikey: anonKey, Authorization: `Bearer ${token}` },
+          body: JSON.stringify(payload ?? {}),
+        });
       } catch {
-        body = {
-          message: responseText,
-        };
+        throw new Error("No connection to the server. Check the internet connection and try again.");
       }
+      const text = await response.text();
+      let body = null;
+      if (text) { try { body = JSON.parse(text); } catch { body = { message: text }; } }
+      return { response, body };
     }
 
-    console.log("[callFn] status =", response.status);
-    console.log("[callFn] ok =", response.ok);
-    console.log("[callFn] response =", body);
+    let result = await send(await readSession());
+    if (result.response.status === 401) result = await send(await readSession(true));
 
-    return {
-      response,
-      body,
-    };
+    const { response, body } = result;
+    if (!response.ok) {
+      const msg = body?.detail || body?.error_description || body?.error || body?.message || `${name} failed (${response.status})`;
+      if (response.status === 401) throw new Error(`${SIGNED_OUT} (${msg})`);
+      if (response.status === 403) throw new Error(msg || "Your account cannot do this.");
+      if (response.status === 404) throw new Error(`The server function ${name} is not deployed.`);
+      if (response.status === 409) throw new Error(msg || "This user already exists.");
+      if (response.status >= 500) throw new Error(`Server error: ${msg}`);
+      throw new Error(msg);
+    }
+    return body;
   }
 
-  // --------------------------------------------------
-  // 第一次请求
-  // --------------------------------------------------
-
-  let session = await readValidSession();
-
-  if (!session?.access_token) {
-    throw new Error("登录已失效，请重新登录");
-  }
-
-  let result = await send(session);
-
-  // --------------------------------------------------
-  // 如果 JWT 已过期，刷新 session 后自动重试一次
-  // --------------------------------------------------
-
-  if (result.response.status === 401) {
-    console.warn(
-      "[callFn] received 401; refreshing Supabase session and retrying once"
-    );
-
-    session = await readValidSession({
-      refresh: true,
-    });
-
-    if (!session?.access_token) {
-      throw new Error("登录已失效，请重新登录");
-    }
-
-    result = await send(session);
-  }
-
-  const { response, body } = result;
-
-  // --------------------------------------------------
-  // Edge Function / Gateway error handling
-  // --------------------------------------------------
-
-  if (!response.ok) {
-    const gatewayCode = safe(body?.code);
-
-    const msg =
-      body?.detail ||
-      body?.error_description ||
-      body?.error ||
-      body?.message ||
-      `Edge Function ${name} failed (${response.status})`;
-
-    console.error("[callFn] Edge Function failed", {
-      functionName: name,
-      status: response.status,
-      gatewayCode,
-      body,
-    });
-
-    if (response.status === 401) {
-      if (gatewayCode) {
-        throw new Error(
-          `登录验证失败（${gatewayCode}）：${msg}`
-        );
-      }
-
-      throw new Error(
-        `登录验证失败：${msg}`
-      );
-    }
-
-    if (response.status === 403) {
-      throw new Error(
-        msg || "没有权限执行此操作"
-      );
-    }
-
-    if (response.status === 404) {
-      throw new Error(
-        `Edge Function ${name} 不存在或未部署`
-      );
-    }
-
-    if (response.status === 409) {
-      throw new Error(
-        msg || "用户已经存在"
-      );
-    }
-
-    if (response.status >= 500) {
-      throw new Error(
-        `服务器错误：${msg}`
-      );
-    }
-
-    throw new Error(msg);
-  }
-
-  return body;
-}
-
-  function showApiError(err, fallback = "操作失败") {
+  function showApiError(err, fallback) {
     const msg = String(err?.message || fallback);
-
-    if (
-      msg.includes("重新登录") ||
-      msg.includes("登录已失效") ||
-      msg.includes("Invalid session") ||
-      msg.includes("Missing bearer token")
-    ) {
-      alert(msg);
-      window.location.href = "./login.html";
-      return;
-    }
-
-    alert(msg || fallback);
+    alert(msg);
+    if (msg.startsWith(SIGNED_OUT) || msg.includes("Invalid session") || msg.includes("Missing bearer token")) window.location.href = "./login.html";
   }
 
   const FN = {
-    createUser: "admin-create-user",
-    updateUser: "admin-update-user",
-    deleteUser: "admin-delete-user",
+    createUser: "tdg-admin-create-user",
+    updateUser: "tdg-admin-update-user",
   };
 
   function openModal(title, bodyHtml, { onClose } = {}) {
-    const titleEl = $("modalTitle");
-    const bodyEl = $("modalBody");
     const backdrop = $("modalBackdrop");
-
-    if (!titleEl || !bodyEl || !backdrop) {
-      throw new Error("Modal elements not found");
-    }
-
-    titleEl.textContent = title;
-    bodyEl.innerHTML = bodyHtml;
+    $("modalTitle").textContent = title;
+    $("modalBody").innerHTML = bodyHtml;
     backdrop.style.display = "flex";
     backdrop.setAttribute("aria-hidden", "false");
-
     let closed = false;
-
-    const esc = (ev) => {
-      if (ev.key === "Escape") close();
-    };
-
+    const esc = (ev) => { if (ev.key === "Escape") close(); };
     const close = () => {
       if (closed) return;
       closed = true;
       backdrop.style.display = "none";
       backdrop.setAttribute("aria-hidden", "true");
-      bodyEl.innerHTML = "";
+      $("modalBody").innerHTML = "";
       document.removeEventListener("keydown", esc);
       backdrop.onclick = null;
       onClose && onClose();
     };
-
-    backdrop.onclick = (e) => {
-      if (e.target === backdrop) close();
-    };
-
+    backdrop.onclick = (e) => { if (e.target === backdrop) close(); };
     document.addEventListener("keydown", esc);
-
     return { close };
   }
 
   const Rules = {
     driverNumber: (v) => /^[A-Za-z0-9._-]{2,32}$/.test(v),
-    displayName: (v) => safe(v).length <= 60,
-    role: (v) => ["admin", "driver", "viewer"].includes(v),
+    displayName: (v) => safe(v).length > 0 && safe(v).length <= 60,
+    role: (v) => ROLES.some(([k]) => k === v),
     phone: (v) => safe(v).length <= 40,
-    email: (v) => safe(v).length <= 120,
+    email: (v) => /^\S+@\S+\.\S+$/.test(safe(v)) && safe(v).length <= 120,
     vehicleNo: (v) => safe(v).length <= 40,
   };
-
-  function assertOrThrow(cond, msg) {
-    if (!cond) throw new Error(msg);
-  }
+  function assertOrThrow(cond, msg) { if (!cond) throw new Error(msg); }
 
   function normalizeUserPayload(payload, { mode = "update" } = {}) {
     const driverNumber = safe(payload.driverNumber).toLowerCase();
-    const username = driverNumber;
-    const displayName = safe(payload.displayName);
-    const role = safe(payload.role || "driver");
-    const isActive = payload.isActive === false ? false : true;
-    const mustChangePassword = !!payload.mustChangePassword;
-    const vehicleNo = safe(payload.vehicleNo);
-    const phone = safe(payload.phone);
-    const email = safe(payload.email).toLowerCase();
-    const password = String(payload.password ?? "");
-
-    assertOrThrow(driverNumber, "Driver Number 不能为空");
-    assertOrThrow(Rules.driverNumber(driverNumber), "Driver Number 格式不合法");
-    assertOrThrow(Rules.displayName(displayName), "Display Name 太长");
-    assertOrThrow(Rules.role(role), "Role 不合法");
-    assertOrThrow(Rules.phone(phone), "Phone 太长");
-    assertOrThrow(Rules.email(email), "Email 太长");
-    assertOrThrow(Rules.vehicleNo(vehicleNo), "Vehicle No 太长");
-
-    if (mode === "create") {
-      assertOrThrow(password.length >= 12, "密码至少 12 位");
-    }
-    if (mode === "update" && password) {
-      assertOrThrow(password.length >= 12, "密码至少 12 位");
-    }
-
-    return {
-      username,
+    const u = {
       driverNumber,
-      displayName,
-      role,
-      isActive,
-      mustChangePassword,
-      vehicleNo,
-      phone,
-      email,
-      password,
+      username: driverNumber,
+      displayName: safe(payload.displayName),
+      role: safe(payload.role || "driver"),
+      isActive: payload.isActive !== false,
+      mustChangePassword: !!payload.mustChangePassword,
+      vehicleNo: safe(payload.vehicleNo),
+      phone: safe(payload.phone),
+      email: lower(payload.email),
+      password: String(payload.password ?? ""),
     };
-  }
-
-  function normalizeCustomerPayload(payload) {
-    const accountNumber = safe(payload.accountNumber);
-    const accountName = safe(payload.accountName);
-    const accountAddress = safe(payload.accountAddress);
-    const city = safe(payload.city);
-    const route = safe(payload.route);
-
-    assertOrThrow(accountNumber, "Account Number 不能为空");
-    assertOrThrow(accountName, "Account Name 不能为空");
-    assertOrThrow(city.length <= 60, "City 太长");
-    assertOrThrow(route.length <= 60, "Route 太长");
-
-    return { accountNumber, accountName, accountAddress, city, route };
+    assertOrThrow(driverNumber, "Enter the Driver Number.");
+    assertOrThrow(Rules.driverNumber(driverNumber), "Driver Number: 2–32 letters, digits, dots, dashes or underscores.");
+    assertOrThrow(Rules.displayName(u.displayName), "Enter the display name (up to 60 characters).");
+    assertOrThrow(Rules.role(u.role), "Choose a role.");
+    assertOrThrow(Rules.phone(u.phone), "Phone is too long.");
+    assertOrThrow(Rules.email(u.email), "Enter the user's work email.");
+    assertOrThrow(Rules.vehicleNo(u.vehicleNo), "Vehicle No is too long.");
+    if (mode === "create" || u.password) assertOrThrow(u.password.length >= 12, "The password needs at least 12 characters.");
+    return u;
   }
 
   function sanitizeUsers(list) {
     return (Array.isArray(list) ? list : []).map((u) => {
-      const loginName = safe(u.driver_number ?? u.username).toLowerCase();
+      const loginName = lower(u.driver_number ?? u.username);
       return {
         id: safe(u.id),
         username: loginName,
@@ -488,803 +211,196 @@
     });
   }
 
-  function sanitizeCustomers(list) {
-    return (Array.isArray(list) ? list : []).map((c) => ({
-      id: safe(c.id),
-      accountNumber: safe(c.account_number ?? c.accountNumber),
-      accountName: safe(c.account_name ?? c.accountName),
-      accountAddress: safe(c.account_address ?? c.accountAddress),
-      city: safe(c.city),
-      route: safe(c.route),
-      createdAt: safe(c.created_at ?? c.createdAt),
-      updatedAt: safe(c.updated_at ?? c.updatedAt),
-    }));
-  }
-
-  function parseCsv(text) {
-    const source=String(text??'').replace(/^\uFEFF/,'').replace(/\r\n?/g,'\n');let field='',row=[],rows=[],quoted=false,closed=false;
-    const pushField=()=>{row.push(field.trim());field='';closed=false;};const pushRow=()=>{pushField();if(row.some(Boolean))rows.push(row);row=[];};
-    for(let i=0;i<source.length;i++){const ch=source[i];if(quoted){if(ch==='"'){if(source[i+1]==='"'){field+='"';i++;}else{quoted=false;closed=true;}}else field+=ch;}else if(ch===',')pushField();else if(ch==='\n')pushRow();else if(ch==='"'&&!field&&!closed)quoted=true;else{if((closed&&ch.trim())||ch==='"')throw new Error('Invalid CSV quote');field+=ch;}}
-    if(quoted)throw new Error('Unclosed CSV quote');if(field||row.length||closed)pushRow();if(!rows.length)return [];
-    const header=rows.shift();if(header.some(h=>!h)||new Set(header).size!==header.length)throw new Error('Invalid CSV headers');
-    return rows.map((cells,i)=>{if(cells.length!==header.length)throw new Error(`CSV row ${i+2}: wrong column count`);return Object.fromEntries(header.map((h,j)=>[h,cells[j]]));});
-  }
-
   const Api = {
-    users: {
-      async list() {
-        const sb = getSb();
-        const { data, error } = await TDG_CORE.paged(sb
-          .from("tdg_profiles")
-          .select(
-            "id, username, driver_number, display_name, role, is_active, must_change_password, vehicle_no, phone, email, created_at, updated_at"
-          )
-          .order("driver_number", { ascending: true }));
-
-        if (error) throw error;
-        return sanitizeUsers(data || []);
-      },
-
-      async create(payload) {
-        const u = normalizeUserPayload(payload, { mode: "create" });
-        const email = canonicalEmailFromDriverNumber(u.driverNumber, u.email);
-
-        const result = await callFn(FN.createUser, {
-          username: u.driverNumber,
-          driverNumber: u.driverNumber,
-          email,
-          password: u.password,
-          displayName: u.displayName,
-          role: u.role,
-          vehicleNo: u.vehicleNo,
-          phone: u.phone,
-          isActive: u.isActive,
-          is_active: u.isActive,
-          mustChangePassword: u.mustChangePassword,
-        });
-
-        return sanitizeUsers([result?.user || result])[0];
-      },
-
-      async update(id, patch) {
-        const u = normalizeUserPayload(
-          {
-            driverNumber: patch.driverNumber,
-            displayName: patch.displayName,
-            role: patch.role,
-            isActive: patch.isActive,
-            mustChangePassword: patch.mustChangePassword,
-            vehicleNo: patch.vehicleNo,
-            phone: patch.phone,
-            email: patch.email,
-            password: patch.password,
-          },
-          { mode: "update" }
-        );
-
-        const result = await callFn(FN.updateUser, {
-          id,
-          expectedUpdatedAt:patch.expectedUpdatedAt,
-          driverNumber: u.driverNumber,
-          displayName: u.displayName,
-          role: u.role,
-          isActive: u.isActive,
-          is_active: u.isActive,
-          mustChangePassword: u.mustChangePassword,
-          vehicleNo: u.vehicleNo,
-          phone: u.phone,
-          email: u.email,
-          password: u.password,
-        });
-
-        return sanitizeUsers([result?.user || result])[0];
-      },
-
-      async remove(id) {
-        await callFn(FN.deleteUser, { id });
-        return true;
-      },
+    async list() {
+      const { data, error } = await TDG_CORE.paged(getSb()
+        .from("tdg_profiles")
+        .select("id, username, driver_number, display_name, role, is_active, must_change_password, vehicle_no, phone, email, created_at, updated_at")
+        .order("driver_number", { ascending: true }));
+      if (error) throw error;
+      return sanitizeUsers(data || []);
     },
-
-    customers: {
-      async list() {
-        const sb = getSb();
-        const { data, error } = await TDG_CORE.paged(sb
-          .from("tdg_customers")
-          .select(
-            "id, account_number, account_name, account_address, city, route, created_at, updated_at"
-          )
-          .order("account_number", { ascending: true }));
-
-        if (error) throw error;
-        return sanitizeCustomers(data || []);
-      },
-
-      async create(payload) {
-        const c = normalizeCustomerPayload(payload);
-        const sb = getSb();
-
-        const { data, error } = await sb
-          .from("tdg_customers")
-          .insert({
-            account_number: c.accountNumber,
-            account_name: c.accountName,
-            account_address: c.accountAddress,
-            city: c.city,
-            route: c.route,
-          })
-          .select(
-            "id, account_number, account_name, account_address, city, route, created_at, updated_at"
-          )
-          .single();
-
-        if (error) {
-          if (String(error.message || "").toLowerCase().includes("duplicate")) {
-            throw new Error("Account Number 已存在");
-          }
-          throw error;
-        }
-
-        return sanitizeCustomers([data])[0];
-      },
-
-      async update(id, patch) {
-        const c = normalizeCustomerPayload(patch);
-        const sb = getSb();
-
-        const { data, error } = await sb
-          .from("tdg_customers")
-          .update({
-            account_number: c.accountNumber,
-            account_name: c.accountName,
-            account_address: c.accountAddress,
-            city: c.city,
-            route: c.route,
-            updated_at: nowIso(),
-          })
-          .eq("id", id)
-          .select(
-            "id, account_number, account_name, account_address, city, route, created_at, updated_at"
-          )
-          .single();
-
-        if (error) {
-          if (String(error.message || "").toLowerCase().includes("duplicate")) {
-            throw new Error("Account Number 已存在");
-          }
-          throw error;
-        }
-
-        return sanitizeCustomers([data])[0];
-      },
-
-      async remove(id) {
-        const sb = getSb();
-        const { error } = await sb.from("tdg_customers").delete().eq("id", id);
-        if (error) throw error;
-        return true;
-      },
-
-      async importFromCsvText(csvText) {
-        const rows = parseCsv(csvText);
-        assertOrThrow(rows.length > 0, "CSV 没有数据");
-
-        const aliases=[['accountNumber','accountNo','no','Position','Account Number','AccountNo'],['accountName','name','Customer Name','Account Name'],['accountAddress','address','Address','Account Address'],['city','City'],['route','Route']];
-        if(aliases.some(names=>!names.some(n=>Object.hasOwn(rows[0],n))))throw new Error('CSV requires Number, Name, Address, City and Route columns; missing columns cannot clear existing values.');
-        const mapped = rows
-          .map((r) => ({
-            account_number: safe(
-              r.accountNumber ??
-                r.accountNo ??
-                r.no ??
-                r.Position ??
-                r["Account Number"] ??
-                r["AccountNo"] ??
-                ""
-            ),
-            account_name: safe(
-              r.accountName ??
-                r.name ??
-                r["Customer Name"] ??
-                r["Account Name"] ??
-                ""
-            ),
-            account_address: safe(
-              r.accountAddress ??
-                r.address ??
-                r.Address ??
-                r["Account Address"] ??
-                ""
-            ),
-            city: safe(r.city ?? r.City ?? ""),
-            route: safe(r.route ?? r.Route ?? ""),
-          }))
-          .filter((x) => x.account_number && x.account_name);
-
-        assertOrThrow(mapped.length > 0, "CSV 缺少必要字段（Account Number / Name）");
-
-        if(mapped.length!==rows.length)throw new Error('CSV contains missing account numbers/names');
-        if(new Set(mapped.map(r=>r.account_number)).size!==mapped.length)throw new Error('CSV contains duplicate accounts');
-        if(!confirm(`Import ${mapped.length} customers? Existing values, including explicit empty cells, will be replaced.`))return 0;
-        const sb = getSb();
-        const { error } = await sb.from("tdg_customers").upsert(mapped, {
-          onConflict: "account_number",
-          ignoreDuplicates: false,
-        });
-
-        if (error) throw error;
-        return mapped.length;
-      },
-
-      async migrateFromLocalStorage() {
-        let local = [];
-        try {
-          local = JSON.parse(TDG_STORAGE.getItem("tdg_customers_demo_v2") || "[]");
-        } catch {
-          local = [];
-        }
-
-        if (!Array.isArray(local) || !local.length) {
-          return 0;
-        }
-
-        const rows = local
-          .map((c) => ({
-            account_number: safe(c.accountNumber),
-            account_name: safe(c.accountName),
-            account_address: safe(c.accountAddress),
-            city: safe(c.city),
-            route: safe(c.route),
-          }))
-          .filter((x) => x.account_number && x.account_name);
-
-        if (!rows.length) return 0;
-
-        const sb = getSb();
-        const { error } = await sb.from("tdg_customers").upsert(rows, {
-          onConflict: "account_number",
-          ignoreDuplicates: false,
-        });
-
-        if (error) throw error;
-
-        return rows.length;
-      },
+    async create(payload) {
+      const u = normalizeUserPayload(payload, { mode: "create" });
+      const result = await callFn(FN.createUser, {
+        username: u.driverNumber, driverNumber: u.driverNumber, email: u.email, password: u.password,
+        displayName: u.displayName, role: u.role, vehicleNo: u.vehicleNo, phone: u.phone,
+        isActive: u.isActive, mustChangePassword: u.mustChangePassword,
+      });
+      return sanitizeUsers([result?.user || result])[0];
+    },
+    async update(id, patch) {
+      const u = normalizeUserPayload(patch, { mode: "update" });
+      const result = await callFn(FN.updateUser, {
+        id, expectedUpdatedAt: patch.expectedUpdatedAt,
+        driverNumber: u.driverNumber, displayName: u.displayName, role: u.role, isActive: u.isActive,
+        mustChangePassword: u.mustChangePassword, vehicleNo: u.vehicleNo, phone: u.phone, email: u.email,
+        password: u.password || undefined,
+      });
+      return sanitizeUsers([result?.user || result])[0];
+    },
+    // Deactivating keeps the account and its history; the last active Admin cannot be deactivated.
+    async deactivate(u) {
+      return Api.update(u.id, { ...u, isActive: false, password: "", expectedUpdatedAt: u.updatedAt });
     },
   };
 
-  document.querySelectorAll(".tab").forEach((t) => {
-    on(
-      t,
-      "click",
-      () => {
-        document.querySelectorAll(".tab").forEach((x) => x.classList.remove("active"));
-        t.classList.add("active");
+  // The website's Users page (js/app/web_admin.js) uses the same calls and rules.
+  window.TDG_ADMIN = { Api, ROLES, Rules };
 
-        const tab = t.getAttribute("data-tab");
-        if ($("panel-users")) $("panel-users").style.display = tab === "users" ? "" : "none";
-        if ($("panel-customers")) $("panel-customers").style.display = tab === "customers" ? "" : "none";
-        if ($("panel-tools")) $("panel-tools").style.display = tab === "tools" ? "" : "none";
-
-        renderAll();
-      },
-      { passive: true }
-    );
-  });
+  const stamp = (iso) => (iso ? escapeHtml(iso.slice(0, 19).replace("T", " ")) : "-");
 
   async function renderUsers() {
     const wrap = $("usersTableWrap");
     if (!wrap) return;
-
-    let users = [];
+    let users;
     try {
       const q = lower($("userSearch")?.value);
-      users = await Api.users.list();
-
-      if (q) {
-        users = users.filter(
-          (u) =>
-            lower(u.username).includes(q) ||
-            lower(u.driverNumber).includes(q) ||
-            lower(u.displayName).includes(q) ||
-            lower(u.email).includes(q) ||
-            lower(u.phone).includes(q)
-        );
-      }
-
-      users.sort((a, b) => safe(a.driverNumber).localeCompare(safe(b.driverNumber)));
+      users = await Api.list();
+      if (q) users = users.filter((u) => [u.driverNumber, u.displayName, u.email, u.phone].some((v) => lower(v).includes(q)));
+      users.sort((a, b) => a.driverNumber.localeCompare(b.driverNumber));
     } catch (e) {
-      wrap.innerHTML = `<div class="empty">加载失败：${escapeHtml(e.message || "error")}</div>`;
+      wrap.innerHTML = `<div class="empty">Users not loaded: ${escapeHtml(e.message || "error")}</div>`;
       return;
     }
-
-    const rows = users
-      .map((u) => {
-        const roleChip = `<span class="chip">${escapeHtml(u.role)}</span>`;
-        const activeChip = `<span class="chip">${u.isActive ? "active" : "disabled"}</span>`;
-        const must = u.mustChangePassword ? `<span class="chip">must change pwd</span>` : "";
-        const sub = [
-          u.displayName ? escapeHtml(u.displayName) : "",
-          u.vehicleNo ? `Vehicle: ${escapeHtml(u.vehicleNo)}` : "",
-          u.phone ? `Phone: ${escapeHtml(u.phone)}` : "",
-          u.email ? `Email: ${escapeHtml(u.email)}` : "",
-        ]
-          .filter(Boolean)
-          .join(" · ");
-
-        return `
-          <tr>
-            <td>
-              <div style="font-weight:800">${escapeHtml(u.driverNumber)}</div>
-              ${sub ? `<div class="muted" style="margin-top:6px">${sub}</div>` : ""}
-            </td>
-            <td>${roleChip} ${activeChip} ${must}</td>
-            <td>
-              <div class="muted">Created: ${
-                u.createdAt ? escapeHtml(u.createdAt.slice(0, 19).replace("T", " ")) : "-"
-              }</div>
-              <div class="muted">Updated: ${
-                u.updatedAt ? escapeHtml(u.updatedAt.slice(0, 19).replace("T", " ")) : "-"
-              }</div>
-            </td>
-            <td style="white-space:nowrap">
-              <button class="btn secondary" data-act="user-edit" data-id="${escapeHtml(
-                u.id
-              )}" type="button">编辑</button>
-              <button class="btn warn" data-act="user-del" data-id="${escapeHtml(
-                u.id
-              )}" data-name="${escapeHtml(u.driverNumber || u.username)}" type="button">停用</button>
-            </td>
-          </tr>
-        `;
-      })
-      .join("");
-
+    const rows = users.map((u) => {
+      const sub = [
+        u.displayName ? escapeHtml(u.displayName) : "",
+        u.vehicleNo ? `Vehicle: ${escapeHtml(u.vehicleNo)}` : "",
+        u.phone ? `Phone: ${escapeHtml(u.phone)}` : "",
+        u.email ? `Email: ${escapeHtml(u.email)}` : "",
+      ].filter(Boolean).join(" · ");
+      return `
+        <tr data-user="${escapeHtml(u.driverNumber)}">
+          <td>
+            <div style="font-weight:800">${escapeHtml(u.driverNumber)}</div>
+            ${sub ? `<div class="muted" style="margin-top:6px">${sub}</div>` : ""}
+          </td>
+          <td><span class="chip">${escapeHtml(roleLabel(u.role))}</span> <span class="chip">${u.isActive ? "Active" : "Deactivated"}</span>${u.mustChangePassword ? ` <span class="chip">Must change password</span>` : ""}</td>
+          <td><div class="muted">Created: ${stamp(u.createdAt)}</div><div class="muted">Updated: ${stamp(u.updatedAt)}</div></td>
+          <td style="white-space:nowrap">
+            <button class="btn secondary" data-act="user-edit" data-id="${escapeHtml(u.id)}" type="button">Edit</button>
+            ${u.isActive ? `<button class="btn warn" data-act="user-off" data-id="${escapeHtml(u.id)}" type="button">Deactivate</button>` : ""}
+          </td>
+        </tr>`;
+    }).join("");
     wrap.innerHTML = `
       <table class="table">
-        <thead>
-          <tr>
-            <th>User</th><th>角色/状态</th><th>时间</th><th>操作</th>
-          </tr>
-        </thead>
-        <tbody>${rows || `<tr><td colspan="4">无数据</td></tr>`}</tbody>
-      </table>
-    `;
+        <thead><tr><th>User</th><th>Role / status</th><th>Time</th><th>Actions</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="4">No users.</td></tr>`}</tbody>
+      </table>`;
   }
 
   function userFormHtml({ mode, data }) {
     const u = data || {};
     const isEdit = mode === "edit";
-
+    const role = u.role || "driver";
     return `
       <div>
-        <label>Driver Number / Login ID</label>
-        <input id="f_driverNumber" value="${escapeHtml(
-          u.driverNumber || u.username || ""
-        )}" placeholder="999999" />
+        <label for="f_driverNumber">Driver Number (sign-in)</label>
+        <input id="f_driverNumber" value="${escapeHtml(u.driverNumber || "")}" placeholder="999999" />
       </div>
-
       <div class="row2" style="margin-top:10px">
-        <div>
-          <label>Display Name</label>
-          <input id="f_displayName" value="${escapeHtml(u.displayName || "")}" />
-        </div>
-        <div>
-          <label>Role</label>
-          <select id="f_role">
-            <option value="driver" ${u.role === "driver" ? "selected" : ""}>driver</option>
-            <option value="viewer" ${u.role === "viewer" ? "selected" : ""}>viewer</option>
-            <option value="admin" ${u.role === "admin" ? "selected" : ""}>admin</option>
-          </select>
-        </div>
+        <div><label for="f_displayName">Display Name</label><input id="f_displayName" value="${escapeHtml(u.displayName || "")}" /></div>
+        <div><label for="f_role">Role</label>
+          <select id="f_role">${ROLES.map(([k, n]) => `<option value="${k}" ${role === k ? "selected" : ""}>${n}</option>`).join("")}</select></div>
       </div>
-
       <div class="row2" style="margin-top:10px">
-        <div>
-          <label>Vehicle No</label>
-          <input id="f_vehicleNo" value="${escapeHtml(u.vehicleNo || "")}" />
-        </div>
-        <div>
-          <label>Status</label>
-          <select id="f_active">
-            <option value="1" ${u.isActive !== false ? "selected" : ""}>active</option>
-            <option value="0" ${u.isActive === false ? "selected" : ""}>disabled</option>
-          </select>
-        </div>
+        <div><label for="f_vehicleNo">Vehicle No</label><input id="f_vehicleNo" value="${escapeHtml(u.vehicleNo || "")}" /></div>
+        <div><label for="f_active">Status</label>
+          <select id="f_active"><option value="1" ${u.isActive !== false ? "selected" : ""}>Active</option><option value="0" ${u.isActive === false ? "selected" : ""}>Deactivated</option></select></div>
       </div>
-
       <div class="row2" style="margin-top:10px">
-        <div>
-          <label>Phone</label>
-          <input id="f_phone" value="${escapeHtml(u.phone || "")}" />
-        </div>
-        <div>
-          <label>Email</label>
-          <input id="f_email" value="${escapeHtml(u.email || "")}" />
-        </div>
+        <div><label for="f_phone">Phone</label><input id="f_phone" value="${escapeHtml(u.phone || "")}" /></div>
+        <div><label for="f_email">Email</label><input id="f_email" value="${escapeHtml(u.email || "")}" /></div>
       </div>
-
       <div class="row2" style="margin-top:10px">
-        <div>
-          <label>${isEdit ? "New Password（留空不改）" : "Initial Password"}</label>
-          <input id="f_password" type="password" />
-        </div>
+        <div><label for="f_password">${isEdit ? "New password (leave empty to keep it)" : "First password"}</label><input id="f_password" type="password" autocomplete="new-password" /></div>
         <div style="display:flex;align-items:end">
           <label style="display:flex;align-items:center;gap:8px;margin:0">
-            <input id="f_mustChange" type="checkbox" ${u.mustChangePassword ? "checked" : ""} />
-            must change password on next login
+            <input id="f_mustChange" type="checkbox" ${u.mustChangePassword || !isEdit ? "checked" : ""} />
+            Must change the password at the next sign-in
           </label>
         </div>
       </div>
-
+      <p class="muted" style="margin-top:10px">Supervisors and Managers use the new website and app only. Only Admins manage users.</p>
       <div class="divider"></div>
       <div class="right-actions">
         <button class="btn secondary" id="btnCancel" type="button">Cancel</button>
         <button class="btn ok" id="btnSave" type="button">${isEdit ? "Save" : "Add"}</button>
-      </div>
-    `;
+      </div>`;
   }
 
-  async function openCreateUser() {
-    const modal = openModal("Create User", userFormHtml({ mode: "create", data: {} }), {
-      onClose: renderAll,
-    });
+  const readForm = () => ({
+    driverNumber: safe($("f_driverNumber").value),
+    displayName: safe($("f_displayName").value),
+    role: $("f_role").value,
+    isActive: $("f_active").value === "1",
+    mustChangePassword: $("f_mustChange").checked,
+    vehicleNo: safe($("f_vehicleNo").value),
+    phone: safe($("f_phone").value),
+    email: safe($("f_email").value),
+    password: String($("f_password").value),
+  });
 
+  function openCreateUser() {
+    const modal = openModal("Add User", userFormHtml({ mode: "create", data: {} }), { onClose: renderUsers });
     $("btnCancel").onclick = () => modal.close();
     $("btnSave").onclick = async () => {
       try {
-        const payload = {
-          driverNumber: safe($("f_driverNumber").value),
-          displayName: safe($("f_displayName").value),
-          role: $("f_role").value,
-          isActive: $("f_active").value === "1",
-          mustChangePassword: $("f_mustChange").checked,
-          vehicleNo: safe($("f_vehicleNo").value),
-          phone: safe($("f_phone").value),
-          email: safe($("f_email").value),
-          password: String($("f_password").value),
-        };
-
-        await Api.users.create(payload);
+        await Api.create(readForm());
         modal.close();
-        alert("已创建");
+        alert("User added.");
       } catch (e) {
-        showApiError(e, "创建失败");
+        showApiError(e, "User not added.");
       }
     };
+  }
+
+  async function findUser(id) {
+    try { return (await Api.list()).find((x) => x.id === id) || null; } catch { alert("Users not loaded. Try again."); return undefined; }
   }
 
   async function openEditUser(id) {
-    let users;
-    try {
-      users = await Api.users.list();
-    } catch {
-      return alert("加载用户失败");
-    }
-
-    const u = users.find((x) => x.id === id);
-    if (!u) return alert("用户不存在");
-
-    const modal = openModal("编辑用户", userFormHtml({ mode: "edit", data: u }), {
-      onClose: renderAll,
-    });
-
+    const u = await findUser(id);
+    if (u === undefined) return;
+    if (!u) return alert("This user no longer exists.");
+    const modal = openModal(`Edit User · ${u.driverNumber}`, userFormHtml({ mode: "edit", data: u }), { onClose: renderUsers });
     $("btnCancel").onclick = () => modal.close();
     $("btnSave").onclick = async () => {
       try {
-        const patch = {
-          expectedUpdatedAt:u.updatedAt,
-          driverNumber: safe($("f_driverNumber").value),
-          displayName: safe($("f_displayName").value),
-          role: $("f_role").value,
-          isActive: $("f_active").value === "1",
-          mustChangePassword: $("f_mustChange").checked,
-          vehicleNo: safe($("f_vehicleNo").value),
-          phone: safe($("f_phone").value),
-          email: safe($("f_email").value),
-          password: String($("f_password").value),
-        };
-
-        await Api.users.update(id, patch);
+        await Api.update(id, { ...readForm(), expectedUpdatedAt: u.updatedAt });
         modal.close();
-        alert("已保存");
+        alert("Saved.");
       } catch (e) {
-        showApiError(e, "保存失败");
+        showApiError(e, "Not saved.");
       }
     };
   }
 
-  async function deleteUser(id, name) {
-    if (!confirm(`确定停用用户（历史保留）：${name || id} ?`)) return;
-
+  async function deactivateUser(id) {
+    const u = await findUser(id);
+    if (!u) return;
+    if (!confirm(`Deactivate ${u.driverNumber}${u.displayName ? ` (${u.displayName})` : ""}? The account can no longer sign in; its records stay.`)) return;
     try {
-      await Api.users.remove(id);
-      alert("已停用，历史保留");
-      renderAll();
+      await Api.deactivate(u);
+      alert("Deactivated. The records stay.");
+      renderUsers();
     } catch (e) {
-      showApiError(e, "删除失败");
+      showApiError(e, "Not deactivated.");
     }
   }
 
-  async function renderCustomers() {
-    const wrap = $("customersTableWrap");
-    if (!wrap) return;
-
-    let list;
-    try {
-      list = await Api.customers.list();
-    } catch (e) {
-      wrap.innerHTML = `<div class="empty">加载失败：${escapeHtml(e.message || "error")}</div>`;
-      return;
-    }
-
-    const q = lower($("custSearch")?.value);
-    let filtered = list;
-    if (q) {
-      filtered = list.filter(
-        (c) =>
-          lower(c.accountNumber).includes(q) ||
-          lower(c.accountName).includes(q) ||
-          lower(c.accountAddress).includes(q) ||
-          lower(c.city).includes(q) ||
-          lower(c.route).includes(q)
-      );
-    }
-
-    const all = filtered
-      .slice()
-      .sort((a, b) => safe(a.accountNumber).localeCompare(safe(b.accountNumber)));
-
-    if (!all.length) {
-      wrap.innerHTML = `<div class="empty">无数据</div>`;
-      return;
-    }
-
-    const total = all.length;
-    const totalPages = Math.max(1, Math.ceil(total / CUST_PAGE_SIZE));
-    custPage = Math.min(Math.max(1, custPage), totalPages);
-
-    const start = (custPage - 1) * CUST_PAGE_SIZE;
-    const pageItems = all.slice(start, start + CUST_PAGE_SIZE);
-
-    const rows = pageItems
-      .map((c) => {
-        return `
-          <tr>
-            <td>
-              <div style="font-weight:800">${escapeHtml(c.accountNumber)}</div>
-              <div class="muted" style="margin-top:6px">${escapeHtml(c.accountName)}</div>
-            </td>
-            <td class="muted">${escapeHtml(c.accountAddress || "")}</td>
-            <td class="muted">${escapeHtml(c.city || "")}</td>
-            <td class="muted">${escapeHtml(c.route || "")}</td>
-            <td style="white-space:nowrap">
-              <button class="btn secondary" data-act="cust-edit" data-id="${escapeHtml(
-                c.id
-              )}" type="button">编辑</button>
-              <button class="btn warn" data-act="cust-del" data-id="${escapeHtml(
-                c.id
-              )}" type="button">删除</button>
-            </td>
-          </tr>
-        `;
-      })
-      .join("");
-
-    wrap.innerHTML = `
-      <table class="table">
-        <thead>
-          <tr><th>Account</th><th>Address</th><th>City</th><th>Route</th><th>操作</th></tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-
-      <div class="grid-actions" style="justify-content:flex-end; margin-top:10px">
-        <span class="muted" style="margin-right:auto">
-          Showing ${start + 1}-${Math.min(start + CUST_PAGE_SIZE, total)} of ${total}
-        </span>
-
-        <button class="btn secondary" type="button" data-act="cust-page-prev" ${
-          custPage === 1 ? "disabled" : ""
-        }>Prev</button>
-        <span class="chip">Page ${custPage} / ${totalPages}</span>
-        <button class="btn secondary" type="button" data-act="cust-page-next" ${
-          custPage === totalPages ? "disabled" : ""
-        }>Next</button>
-      </div>
-    `;
-  }
-
-  function customerFormHtml({ mode, data }) {
-    const c = data || {};
-    const isEdit = mode === "edit";
-
-    return `
-      <div class="row2">
-        <div>
-          <label>Account Number</label>
-          <input id="c_no" value="${escapeHtml(c.accountNumber || "")}" placeholder="1008" />
-        </div>
-        <div>
-          <label>Account Name</label>
-          <input id="c_name" value="${escapeHtml(c.accountName || "")}" placeholder="Customer Name" />
-        </div>
-      </div>
-
-      <div style="margin-top:10px">
-        <label>Account Address</label>
-        <input id="c_addr" value="${escapeHtml(
-          c.accountAddress || ""
-        )}" placeholder="Street, City, Province" />
-      </div>
-
-      <div class="row2" style="margin-top:10px">
-        <div>
-          <label>City</label>
-          <input id="c_city" value="${escapeHtml(c.city || "")}" placeholder="Winnipeg" />
-        </div>
-        <div>
-          <label>Route</label>
-          <input id="c_route" value="${escapeHtml(c.route || "")}" placeholder="R-01" />
-        </div>
-      </div>
-
-      <div class="divider"></div>
-      <div class="right-actions">
-        <button class="btn secondary" id="btnCancel" type="button">Cancel</button>
-        <button class="btn ok" id="btnSave" type="button">${isEdit ? "保存" : "创建"}</button>
-      </div>
-    `;
-  }
-
-  function openCreateCustomer() {
-    const modal = openModal("新增客户", customerFormHtml({ mode: "create", data: {} }), {
-      onClose: renderAll,
-    });
-
-    $("btnCancel").onclick = () => modal.close();
-    $("btnSave").onclick = async () => {
-      try {
-        const payload = {
-          accountNumber: safe($("c_no").value),
-          accountName: safe($("c_name").value),
-          accountAddress: safe($("c_addr").value),
-          city: safe($("c_city").value),
-          route: safe($("c_route").value),
-        };
-        await Api.customers.create(payload);
-        modal.close();
-        alert("已创建");
-      } catch (e) {
-        alert(e.message || "创建失败");
-      }
-    };
-  }
-
-  async function openEditCustomer(id) {
-    const list = await Api.customers.list();
-    const c = list.find((x) => x.id === id);
-    if (!c) return alert("客户不存在");
-
-    const modal = openModal("编辑客户", customerFormHtml({ mode: "edit", data: c }), {
-      onClose: renderAll,
-    });
-
-    $("btnCancel").onclick = () => modal.close();
-    $("btnSave").onclick = async () => {
-      try {
-        const patch = {
-          accountNumber: safe($("c_no").value),
-          accountName: safe($("c_name").value),
-          accountAddress: safe($("c_addr").value),
-          city: safe($("c_city").value),
-          route: safe($("c_route").value),
-        };
-        await Api.customers.update(id, patch);
-        modal.close();
-        alert("已保存");
-      } catch (e) {
-        alert(e.message || "保存失败");
-      }
-    };
-  }
-
-  async function deleteCustomer(id) {
-    const list = await Api.customers.list();
-    const c = list.find((x) => x.id === id);
-    if (!c) return alert("客户不存在");
-
-    if (!confirm(`确定删除客户：${c.accountNumber} / ${c.accountName} ?`)) return;
-
-    try {
-      await Api.customers.remove(id);
-      alert("已删除");
-      renderAll();
-    } catch (e) {
-      alert(e.message || "删除失败");
-    }
-  }
-
+  if (!$("panel-users")) return; // loaded by the website's own pages for TDG_ADMIN only
   on($("userSearch"), "input", () => renderUsers(), { passive: true });
-
-  on(
-    $("custSearch"),
-    "input",
-    () => {
-      custPage = 1;
-      renderCustomers();
-    },
-    { passive: true }
-  );
-
   on($("btnAddUser"), "click", () => openCreateUser(), { passive: true });
-  on($("btnAddCustomer"), "click", () => openCreateCustomer(), { passive: true });
-
-  on($("importCustomersCsv"), "change", async (e) => {
-    const f = e.target.files?.[0];
-    e.target.value = "";
-    if (!f) return;
-
-    try {
-      const text = await f.text();
-      const n = await Api.customers.importFromCsvText(text);
-      alert(`导入成功（合并后共 ${n} 条）`);
-      renderCustomers();
-    } catch (err) {
-      alert(err.message || "CSV 导入失败");
-    }
-  });
-
   on(document, "click", (e) => {
     const btn = e.target?.closest?.("button[data-act]");
     if (!btn) return;
-
     const act = btn.getAttribute("data-act");
-    console.log("clicked act =", act, btn);
-
-    if (act === "cust-page-prev") {
-      custPage = Math.max(1, custPage - 1);
-      return renderCustomers();
-    }
-
-    if (act === "cust-page-next") {
-      custPage = custPage + 1;
-      return renderCustomers();
-    }
-
-    if (act === "user-edit") {
-      return openEditUser(btn.getAttribute("data-id"));
-    }
-
-    if (act === "user-del") {
-      return deleteUser(btn.getAttribute("data-id"), btn.getAttribute("data-name"));
-    }
-
-    if (act === "cust-edit") {
-      return openEditCustomer(btn.getAttribute("data-id"));
-    }
-
-    if (act === "cust-del") {
-      return deleteCustomer(btn.getAttribute("data-id"));
-    }
+    if (act === "user-edit") return openEditUser(btn.getAttribute("data-id"));
+    if (act === "user-off") return deactivateUser(btn.getAttribute("data-id"));
   });
 
-  on($("btnDangerResetAll"), "click", () => {
-    if (!confirm("⚠️确定清空所有本地数据？（不可恢复）")) return;
-    TDG_STORAGE.clear();
-    TDG_SESSION_STORAGE.clear();
-    alert("已清空。将返回登录页。");
-    window.location.href = "./login.html";
-  });
-
-  function renderAll() {
-    renderUsers();
-    renderCustomers();
-  }
-
-  requireAdminPageAccess().then((ok) => {
-    if (ok) {
-      renderAll();
-    }
-  });
+  requireAdminPageAccess().then((ok) => { if (ok) renderUsers(); });
 })();

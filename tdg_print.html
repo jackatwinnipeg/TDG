@@ -385,7 +385,7 @@
       </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0"></script>
+    <script src="./js/vendor/supabase-js-2.111.0.js"></script>
     <script src="./js/supabaseConfig.js?v=20260912"></script>
     <script src="./js/supabaseClient.js?v=20260912"></script>
     <script src="./js/auth_supabase.js?v=20260912"></script>
@@ -562,6 +562,8 @@
             ? `RELOAD — ${loc || "Linde Mcphillips Plant"}`
             : adjustment
               ? `TDG ADJUSTMENT — ${adjustmentReason || "Adjustment"}`
+            : TDG_CORE.isEmergency(r)
+              ? `EMERGENCY — ${loc}`
             : loc,
           accountNumber: acct,
           delivered,
@@ -624,16 +626,20 @@
         document.getElementById("sigDate").textContent = date;
       }
 
-      function fillTable(records) {
-        const rows = records
+      // others: other drivers' records on this vehicle the same day, applied in time order (not printed).
+      function fillTable(records, others = []) {
+        const sorted = records
           .slice()
-          .sort((a, b) => getSortTimeValue(a) - getSortTimeValue(b))
-          .map(buildRow);
+          .sort((a, b) => getSortTimeValue(a) - getSortTimeValue(b));
+        const rows = sorted.map(buildRow);
+        const waiting = others.slice();
 
         const first = records[0] || {};
         let running = num(first.tdg_volume ?? first.raw?.tdgVolume ?? first.raw?.tdgStartVolume ?? 0);
 
         for (let i = 0; i < rows.length; i++) {
+          const due = TDG_CORE.minutesOf(sorted[i].arrival_time || sorted[i].completed_at);
+          while (waiting.length && waiting[0].minutes <= due) running += waiting.shift().kg;
           if (rows[i].reload) {
             running += rows[i].reloadKg;
           } else if (rows[i].adjustment) {
@@ -746,11 +752,11 @@
           const groups=[...new Map(records.map(r=>[`${r.owner_id}|${r.vehicle_no}`,{ownerId:r.owner_id,date,vehicleNo:r.vehicle_no}])).values()];
           if(groups.length>1){TDG_STORAGE.setItem('tdg_batch_tdg_selection_v1',JSON.stringify({groups}));location.replace('./batch_tdg_print.html');return;}
           const context=await TDG_CORE.loadShiftContext(getSupabaseClientStrict(),records[0].owner_id,date,records[0].vehicle_no);
-          const opening=await TDG_CORE.openingBalance(getSupabaseClientStrict(),records[0].owner_id,date,records[0].vehicle_no,records);
-          records[0]={...records[0],tdg_volume:opening};
+          const vehicle=await TDG_CORE.vehicleContext(getSupabaseClientStrict(),records[0].owner_id,date,records[0].vehicle_no,records);
+          records[0]={...records[0],tdg_volume:vehicle.opening};
           fillHeader(date, records,context);
           setCheckboxesFromRows(records);
-          fillTable(records);
+          fillTable(records,vehicle.others);
 
           document.title = `${date}.pdf`;
         } catch (err) {

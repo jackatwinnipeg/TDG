@@ -10,7 +10,7 @@
     <title>TDG Print (1:1)</title>
 
     <style>
-      /* ===== 打印：A4 横向 + 小边距（更像原纸张）===== */
+      /* ===== Print: A4 landscape, small margins (close to the paper form) ===== */
       @page {
         size: A4 landscape;
         margin: 8mm;
@@ -38,7 +38,7 @@
         box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
       }
 
-      /* ===== 关键：用黑色细线框，接近 PDF 工业表单风格 ===== */
+      /* ===== Thin black borders, like the PDF form ===== */
       .box {
         border: 1px solid #000;
       }
@@ -116,7 +116,7 @@
         text-align: right;
       }
 
-      /* ✅ 让 Delivered / Balance / Notes 三列（含表头+数据）居中 */
+      /* Center the Delivered / Balance / Notes columns (header and data) */
       table thead th:nth-child(4),
       table tbody td:nth-child(4),
       table thead th:nth-child(5),
@@ -126,7 +126,7 @@
         text-align: center;
       }
 
-      /* 顶部工具条（不打印） */
+      /* Top toolbar (not printed) */
       .toolbar {
         display: flex;
         gap: 10px;
@@ -157,7 +157,7 @@
         font-weight: 700;
       }
 
-      /* 可选：如果你导出一张 PDF 背景图，可在这里做水印底图（肉眼更像） */
+      /* Optional: a background image exported from the PDF can be used as a watermark here */
       .bg-watermark {
         position: relative;
       }
@@ -165,7 +165,7 @@
         content: "";
         position: absolute;
         inset: 0;
-        /* 把下面 url 换成你从 PDF 导出的底图（可选） */
+        /* Replace the url below with an image exported from the PDF (optional) */
         /* background: url('./assets/tdg_template_page1.png') no-repeat center/contain; */
         opacity: 0.12;
         pointer-events: none;
@@ -175,10 +175,10 @@
         z-index: 1;
       }
 
-      /* ✅ 右侧信息区：最优方案（Grid 固定两列，一行显示 Label: Value） */
+      /* Right-hand info area: two-column grid, one "Label: Value" per line */
       .kv {
         display: grid;
-        grid-template-columns: 92px 1fr; /* 左列固定宽度（你也可调到 100/110） */
+        grid-template-columns: 92px 1fr; /* fixed label column (100/110 also work) */
         align-items: center;
         column-gap: 6px;
       }
@@ -188,7 +188,7 @@
       }
       .kv .value {
         margin: 0;
-        text-align: left; /* 如果你希望值靠右，改成 right */
+        text-align: left; /* use right to align values to the right */
         min-height: 14px;
       }
       .inline-info {
@@ -215,12 +215,12 @@
         margin-left: 2px;
       }
       .inline-info .value {
-        font-size: 16px; /* 字体放大 */
+        font-size: 16px; /* larger text */
         font-weight: 700;
         font-family:
-          "SimHei", "Microsoft YaHei", Arial, Helvetica, sans-serif; /* 黑体 */
-        text-align: center; /* 数字靠右 */
-        flex: 1; /* 让数字自动贴右边 */
+          "SimHei", "Microsoft YaHei", Arial, Helvetica, sans-serif; /* bold sans-serif */
+        text-align: center;
+        flex: 1; /* number fills the remaining width */
       }
     </style>
   </head>
@@ -239,13 +239,13 @@
     </div>
 
     <div class="sheet box bg-watermark">
-      <!-- ===== 顶部标题区 ===== -->
+      <!-- ===== Title ===== -->
       <div class="title box">
         Transportation of Dangerous Goods Shipping Document
       </div>
 
       <div class="row box">
-        <!-- 左：公司/ERAP -->
+        <!-- Left: company / ERAP -->
         <div class="col p8" style="flex: 1">
           <div class="gridline" style="margin-top: 6px"></div>
           <div class="row" style="gap: 10px; margin-top: 6px">
@@ -282,7 +282,7 @@
           </div>
         </div>
 
-        <!-- 右：日期/车辆/公里等（✅改为一行一条 Label: Value） -->
+        <!-- Right: date, vehicle, KM (one "Label: Value" per line) -->
         <div class="col box" style="width: 260px">
           <div class="p6 kv">
             <span class="label">Date:</span>
@@ -319,7 +319,7 @@
         </div>
       </div>
 
-      <!-- ===== 小信息条：Shift + TDG ===== -->
+      <!-- ===== Shift and TDG line ===== -->
       <div class="row box">
         <div class="col p6 inline-info" style="width: 220px">
           <div class="label">SHIFT TIME START</div>
@@ -342,7 +342,7 @@
         </div>
       </div>
 
-      <!-- ===== 主表格 ===== -->
+      <!-- ===== Main table ===== -->
       <div class="box">
         <table>
           <thead>
@@ -356,12 +356,12 @@
             </tr>
           </thead>
           <tbody id="tbody">
-            <!-- JS 填行 -->
+            <!-- rows filled by script -->
           </tbody>
         </table>
       </div>
 
-      <!-- ===== 底部声明 + 签名 ===== -->
+      <!-- ===== Declaration and signature ===== -->
       <div class="box p8">
         <div class="small tight">
           I hereby declare that the contents of this consignment are fully and
@@ -391,7 +391,7 @@
         </div>
       </div>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0"></script>
+    <script src="./js/vendor/supabase-js-2.111.0.js"></script>
     <script src="./js/supabaseConfig.js?v=20260912"></script>
     <script src="./js/supabaseClient.js?v=20260912"></script>
     <script src="./js/auth_supabase.js?v=20260912"></script>
@@ -508,7 +508,7 @@
       }
 
       function buildRow(r) {
-        // 兼容你 current_detail.html 记录结构
+        // Records as Current_Detail.html stores them
         const arrive = formatTime(
           r.arrivalTime || r.arrive || r.completedAt || "",
         ); // HH:mm
@@ -533,7 +533,7 @@
 
         return {
           arrive,
-          customerLocation: loc,
+          customerLocation: TDG_CORE.isEmergency(r) ? `EMERGENCY — ${loc}` : loc,
           accountNumber: acct,
           delivered: delivered,
           balance: remaining,
@@ -551,7 +551,7 @@
 
         if (!payload) {
           alert(
-            "未找到导出数据（tdg_export_payload_v1）。请从 Current Detail 点击 Export PDF 再打开本页。",
+            "No export data found (tdg_export_payload_v1). Open this page with Export PDF in Current Detail.",
           );
           return;
         }
@@ -559,7 +559,7 @@
         const header = payload.header || {};
         const records = Array.isArray(payload.records) ? payload.records : [];
 
-        // ===== 头部字段（含自动计算 totalKm）=====
+        // ===== Header fields (Total KM is calculated) =====
         const startKm = safe(header.startKm);
         const endKm = safe(header.endKm);
         const totalKm =
@@ -600,7 +600,7 @@
         document.getElementById("hdrTdgRemaining").textContent =
           tdgRemain == null ? "" : String(Math.max(0, Math.trunc(tdgRemain)));
 
-        // 签名区
+        // Signature
         document.getElementById("sigPrint").textContent = safe(
           header.driverName || header.consignorPrint || "",
         );
@@ -611,7 +611,7 @@
           header.date || header.dateIso?.slice(0, 10),
         );
 
-        // 产品勾选：
+        // Product check boxes:
         const hasAnyProductFlag =
           Object.prototype.hasOwnProperty.call(header, "productOxygen") ||
           Object.prototype.hasOwnProperty.call(header, "productNitrogen") ||
@@ -627,34 +627,34 @@
           document.getElementById("chkO2").checked = false;
           document.getElementById("chkN2").checked = false;
           document.getElementById("chkAr").checked = false;
-          document.getElementById("chkCO2").checked = true; // 默认 CO2
+          document.getElementById("chkCO2").checked = true; // CO2 by default
         }
 
-        // ===== 表格 =====
+        // ===== Table =====
         function getSortTimeValue(r) {
   const raw =
     r.arrivalTime || r.arrive || r.completedAt || r.updatedAt || r.createdAt || "";
 
   if (!raw) return Number.MAX_SAFE_INTEGER;
 
-  // 先优先处理 "HH:mm" / "H:mm"
+  // "HH:mm" / "H:mm" first
   const s = String(raw).trim();
   const hm = s.match(/^(\d{1,2}):(\d{2})$/);
   if (hm) {
     const h = Number(hm[1]);
     const m = Number(hm[2]);
     if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
-      return h * 60 + m; // 按当天分钟数排序
+      return h * 60 + m; // minutes of the day
     }
   }
 
-  // 再处理时间戳
+  // then timestamps
   if (/^\d{10,13}$/.test(s)) {
     const ms = s.length === 10 ? Number(s) * 1000 : Number(s);
     if (Number.isFinite(ms)) return ms;
   }
 
-  // 最后尝试标准日期字符串
+  // then date strings
   const t = Date.parse(s);
   if (!Number.isNaN(t)) return t;
 
@@ -664,7 +664,7 @@
 const sortedRecords = records
   .slice()
   .sort((a, b) => {
-    return getSortTimeValue(a) - getSortTimeValue(b); // 最早 -> 最晚
+    return getSortTimeValue(a) - getSortTimeValue(b); // earliest first
   });
 
 const rows = sortedRecords.map(buildRow);

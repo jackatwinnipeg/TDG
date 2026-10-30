@@ -10,7 +10,9 @@
  */
 (() => {
   const RESET_DATE = "2026-08-09";
-  const RESET_VEHICLES = Object.freeze(["82112", "82303"]);
+  // shortcut: TEST01 is the made-up truck for trying the new app on production (DEV_PLAN.md rule);
+  // it starts at 0 kg like the two real trucks. Replace with the owner's rule for new trucks.
+  const RESET_VEHICLES = Object.freeze(["82112", "82303", "TEST01"]);
   const MAX_RAW_DEPTH = 8;
 
   const safe = (value) => String(value ?? "").trim();
