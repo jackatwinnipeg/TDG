@@ -60,7 +60,7 @@
   const ROUTES = [["Z02", "Z02 · local"], ["Z01", "Z01 · long distance"]];
   const SHOW_MAX = 100;
   const cs = () => (S().cust ||= { q: "", all: false, allList: null, error: "", noProv: false });
-  const source = () => (cs().all ? cs().allList || [] : App.data.cachedCustomers());
+  const source = () => (cs().all ? cs().allList || [] : App.data.provinceCustomers());
   const findCust = (id) => source().find((x) => x.id === id) || App.data.cachedCustomers().find((x) => x.id === id) || null;
 
   function listHtml() {

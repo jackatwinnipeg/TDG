@@ -71,6 +71,8 @@
     const kept = c.day === localDate() ? (c.kept || []).filter((k) => !c.list.some((x) => x.accountNumber === k.accountNumber)) : [];
     return kept.length ? [...c.list, ...kept] : c.list;
   }
+  // The Customers page: only the province's own, not the ones from other provinces kept for today.
+  const provinceCustomers = () => custCache().list;
   const customersInfo = () => { const c = custCache(); return { prov: c.prov, day: c.day, count: c.list.length }; };
 
   // prov: the current province ("" downloads every customer, until a province is known).
@@ -467,7 +469,7 @@
   };
 
   App.data = {
-    isTransient, failure, call, CUST_COLS, toCustomer, cachedCustomers, customersInfo, syncCustomers, putCustomer, dropCustomer, keepCustomer,
+    isTransient, failure, call, CUST_COLS, toCustomer, cachedCustomers, provinceCustomers, customersInfo, syncCustomers, putCustomer, dropCustomer, keepCustomer,
     searchCustomers, searchAllProvinces, fetchAllCustomers, cachedPlants, plantsIn, syncPlants, savePlant, removePlant, loadWeekCycle, weekCycleRow, computeRemaining, integerPart,
     loadOpeningBalance, fetchOpeningBalance, fetchShift, fetchShifts, fetchDailyLogs, dropEarlierOffDuty, pullRecords, fetchHistory, fetchDay, recordFromRow, recordRow, writes, normVeh,
   };

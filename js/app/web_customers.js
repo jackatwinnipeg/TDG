@@ -62,11 +62,11 @@
     const noProv = edit ? K().source().filter((x) => !x.province).length : 0;
     const right = `${K().canImport() ? `<button class="btn btn-outline" data-action="custImport">${icon("upload", 16)} Import CSV</button><input type="file" id="custCsv" accept=".csv,text/csv" hidden>` : ""}
       ${App.canAddCustomer() ? `<button class="btn btn-primary" data-action="custAdd">${icon("plus", 16)} Add customer</button>` : ""}`;
-    const total = (c.all ? c.allList || [] : App.data.cachedCustomers()).length;
+    const total = K().source().length;
     const sub = `${fmtN(total)} customers ${c.all ? "in all provinces" : `in ${esc(here)}`}${noProv ? ` · ${noProv} without a province` : ""}`;
     const card = (on, action, label, value) => `<button class="w-count" type="button" ${action} aria-pressed="${on}"><span>${label}</span><b class="num">${value}</b></button>`;
     const cards = edit ? `<div class="w-counts">
-        ${card(!c.all && !c.noProv, 'data-action="custScope" data-all="0"', esc(here), fmtN(App.data.cachedCustomers().length))}
+        ${card(!c.all && !c.noProv, 'data-action="custScope" data-all="0"', esc(here), fmtN(App.data.provinceCustomers().length))}
         ${card(c.all && !c.noProv, 'data-action="custScope" data-all="1"', "All provinces", c.allList ? fmtN(c.allList.length) : "—")}
         ${noProv || c.noProv ? card(c.noProv, 'data-action="custNoProv"', "No province", fmtN(noProv)) : ""}
       </div>` : "";
