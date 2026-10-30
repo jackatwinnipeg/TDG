@@ -13,6 +13,16 @@
   if (asked === "web" || asked === "app") App.device.set("ui", asked);
   const pick = App.device.get("ui", "");
   App.web = !App.inApp && (pick ? pick === "web" : document.documentElement.dataset.ui === "web");
+  // The website keeps no password (owner, 2026-10-30): a sign-in remembered on this computer before then keeps
+  // only its Driver Number (login.html), also when the session never comes back to the sign-in page.
+  if (!App.inApp && (App.web || document.documentElement.dataset.ui === "web")) {
+    try {
+      const old = localStorage.getItem("tdg_app:remember");
+      localStorage.removeItem("tdg_app:remember");
+      const u = old && JSON.parse(old).u;
+      if (u) App.device.set("driver_number", u);
+    } catch {}
+  }
   if (!App.web) return;
   document.documentElement.classList.add("web");
 
