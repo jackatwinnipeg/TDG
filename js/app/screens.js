@@ -198,6 +198,7 @@
   function renderMore() {
     const S = App.S, sess = S.session, t = S.theme;
     const name = sess.displayName || sess.username;
+    // No Admin, Customers or Delivery Lists on the website: its sidebar has them (owner, 2026-10-30).
     return `
       <div class="page-h"><h1>More</h1></div>
       <section class="card profile">
@@ -205,9 +206,9 @@
         <div><div style="font-weight:750;font-size:18px">${esc(name)}</div><div class="muted">${App.ROLE_LABEL[S.role] || S.role}${App.canRecord() ? ` #${esc(sess.driverNumber)}` : ""}</div></div>
       </section>
       <div class="menu">
-        ${S.role === "admin" && !App.inApp ? `<button class="menu-item" data-action="openAdmin"><span class="ic">${icon("list")}</span><span class="grow">Admin<div class="small muted">Users and roles</div></span>${icon("chev", 18)}</button>` : ""}
-        ${App.canAddCustomer() && !App.tabsFor().includes("customers") ? `<button class="menu-item" data-action="tab" data-screen="customers"><span class="ic">${icon("customers")}</span><span class="grow">Customers<div class="small muted">${App.canEditCustomer() ? "Customers and reload plants" : "Find and add customers"}</div></span>${icon("chev", 18)}</button>` : ""}
-        ${App.canSendLists() ? `<button class="menu-item" data-action="tab" data-screen="deliveryLists"><span class="ic">${icon("list")}</span><span class="grow">Delivery Lists<div class="small muted">Send a driver next week's list</div></span>${icon("chev", 18)}</button>` : ""}
+        ${S.role === "admin" && !App.inApp && !App.web ? `<button class="menu-item" data-action="openAdmin"><span class="ic">${icon("list")}</span><span class="grow">Admin<div class="small muted">Users and roles</div></span>${icon("chev", 18)}</button>` : ""}
+        ${!App.web && App.canAddCustomer() && !App.tabsFor().includes("customers") ? `<button class="menu-item" data-action="tab" data-screen="customers"><span class="ic">${icon("customers")}</span><span class="grow">Customers<div class="small muted">${App.canEditCustomer() ? "Customers and reload plants" : "Find and add customers"}</div></span>${icon("chev", 18)}</button>` : ""}
+        ${!App.web && App.canSendLists() ? `<button class="menu-item" data-action="tab" data-screen="deliveryLists"><span class="ic">${icon("list")}</span><span class="grow">Delivery Lists<div class="small muted">Send a driver next week's list</div></span>${icon("chev", 18)}</button>` : ""}
         <button class="menu-item" data-action="changePassword"><span class="ic">${icon("key")}</span><span class="grow">Change Password</span>${icon("chev", 18)}</button>
         ${App.canRecord() ? `<button class="menu-item" data-action="backup"><span class="ic">${icon("cloud")}</span><span class="grow">Back Up This Phone</span>${icon("chev", 18)}</button>` : ""}
         ${App.inApp ? renderVersion() : `<div class="menu-item" style="cursor:default"><span class="ic">${icon("update")}</span><span class="grow">Version<div class="small muted">${esc(App.VERSION)}</div></span></div>`}
