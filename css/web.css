@@ -206,7 +206,7 @@ html.web .w-searchbox { position: relative; width: 340px; max-width: 100%; }
 html.web .w-searchbox svg { position: absolute; left: 11px; top: 11px; color: var(--muted); }
 html.web .w-searchbox .input { padding-left: 34px; }
 html.web .w-pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; border-top: 1px solid var(--w-rule); }
-html.web .w-pointmap { height: 200px; border-radius: 8px; overflow: hidden; background: var(--w-raised); }
+html.web .w-pointmap { height: 200px; border-radius: 8px; overflow: hidden; background: var(--w-raised); isolation: isolate; } /* Leaflet's layers (z-index up to 1000) stay under drawers and dialogs, as .map-wrap in app.css */
 html.web .w-appbox .card { margin: 0; border: 0; padding: 0; }
 html.web .w-appbox .card-h { display: none; }
 html.web .w-days { grid-auto-columns: minmax(150px, 1fr); overflow-x: auto; }
