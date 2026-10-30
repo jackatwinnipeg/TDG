@@ -55,7 +55,7 @@
       <dl class="w-kv w-kv3">${kpi("Deliveries", d.deliveries.length)}${kpi("Delivered", fmtN(d.lbs), "lbs")}${kpi("Week cycle", d.cycle || "—")}</dl>
       ${recs.map((r) => {
         const reload = V.getReloadAmountKg(r), adj = V.getAdjustmentAmountLbs(r);
-        return `<div class="w-line"><span class="num w-time">${esc(r.arrivalTime)}</span><span class="w-what">${r.emergency ? `${W.pill("Emergency", "warn")} ` : ""}${reload ? `Reload${r.accountName ? ` at ${esc(r.accountName)}` : ""}` : adj ? "TDG adjustment" : esc(r.accountName)}<small>${esc([r.accountAddress, r.accountNumber].filter(Boolean).join(" · "))}</small></span><span class="num">${reload ? `+${fmtN(reload)} kg` : adj ? `${fmtN(adj)} lbs` : `${fmtN(r.deliveredVolume)} lbs`}</span></div>`;
+        return `<div class="w-line"><span class="num w-time">${esc(r.arrivalTime)}</span><span class="w-what">${r.emergency ? `${W.pill("Emergency", "warn")} ` : ""}${reload ? `Reload${r.accountName ? ` at ${esc(r.accountName)}` : ""}` : adj ? "TDG adjustment" : esc(r.accountName)}<small>${esc([r.accountNumber, r.accountAddress, r.accountCity].filter(Boolean).join(" · "))}</small></span><span class="num">${reload ? `+${fmtN(reload)} kg` : adj ? `${fmtN(adj)} lbs` : `${fmtN(r.deliveredVolume)} lbs`}</span></div>`;
       }).join("")}
       <div class="w-foot w-actions-row"><button class="btn btn-outline" data-action="openDay" data-date="${d.date}" data-from="history">${icon("file", 16)} TDG report</button>
         <button class="btn btn-outline" data-action="fillLogSearch">${icon("file", 16)} Fill Log</button>
