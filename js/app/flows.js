@@ -42,11 +42,18 @@
   }
 
   /* ---------------- check-in / check-out ---------------- */
-  const shiftRow = (vehicle, km, time, at) => ({
+  const shiftRow = (vehicle, km, time, at, product) => ({
     owner_id: S().session.userId, work_date: S().day.date, driver_number: S().session.driverNumber || S().session.username || "",
     driver_name: S().session.displayName || S().session.username || "", vehicle_no: vehicle, start_km: km,
-    check_in_at: at, check_in_time: time, check_out_at: null, check_out_time: null, updated_at: at,
+    check_in_at: at, check_in_time: time, check_out_at: null, check_out_time: null, updated_at: at, product,
   });
+
+  // PRODUCTS_PROPOSAL.md decisions 1-2: exactly one product, nothing ticked beforehand.
+  const productPicker = (current = "") => `
+    <div class="field" role="radiogroup" aria-labelledby="productH"><div class="label" id="productH">Product loaded today *</div>
+      ${App.PRODUCTS.map((p) => `<label class="toggle-row"><input type="radio" name="product" value="${p.code}" ${p.code === current ? "checked" : ""}> ${esc(p.text)}</label>`).join("")}</div>`;
+  const pickedProduct = () => $("input[name=product]:checked")?.value || "";
+  const NO_PRODUCT = "Choose the product loaded today.";
 
   function openCheckIn() {
     const d = S().day;
@@ -57,6 +64,7 @@
         <div class="note-box">Starts your work day and the shift on <b>${esc(d.vehicle)}</b>.</div>
         <div class="field"><label class="label" for="ciKm">Start KM for ${esc(d.vehicle)} *</label>
           <input class="input num" id="ciKm" type="text" inputmode="numeric" data-num="int" autocomplete="off" placeholder="e.g. 48210"></div>
+        ${productPicker()}
         <p class="hint">Week Cycle ${esc(d.weekCycle)}. To use a different vehicle, change Vehicle No on the Today screen first.</p>`,
       footer: `<button class="btn btn-outline" data-action="sheetCancel">Cancel</button><button class="btn btn-ok" data-action="confirmCheckIn">Check-in</button>`,
     });
@@ -66,6 +74,8 @@
     const d = S().day;
     const km = numVal("#ciKm");
     if (!(km >= 0)) return App.sheetErr("Enter the Start KM.");
+    const product = pickedProduct();
+    if (!product) return App.sheetErr(NO_PRODUCT);
     App.sheetBusy(true);
     let rows = [], seen = true;
     try {
@@ -82,9 +92,9 @@
     }
     App.closeSheet(false);
     const existing = rows.find((r) => normVeh(r.vehicle_no) === d.vehicle);
-    if (existing) return askReplace(existing, `${nowHHMM()} · ${d.vehicle} · Start KM ${fmtN(km)}`, () => doCheckIn(km));
+    if (existing) return askReplace(existing, `${nowHHMM()} · ${d.vehicle} · Start KM ${fmtN(km)}`, () => doCheckIn(km, product));
     // unseen: today's check-ins could not be read, so the upload must not replace one unasked.
-    return doCheckIn(km, !seen);
+    return doCheckIn(km, product, !seen);
   }
 
   // A check-in already saved today for this vehicle: replace it, or keep it and go on from it.
@@ -107,15 +117,38 @@
     await upload("Checked in", `${row.vehicle_no} at ${row.check_in_time} · Start KM ${fmtN(row.start_km)}`, "Check-in not uploaded");
   });
 
-  async function doCheckIn(km, unseen = false) {
+  async function doCheckIn(km, product, unseen = false) {
     const d = S().day, time = nowHHMM(), at = nowIso();
     try {
-      App.outbox.add("shift.checkin", { row: shiftRow(d.vehicle, km, time, at), unseen });
+      App.outbox.add("shift.checkin", { row: shiftRow(d.vehicle, km, time, at, product), unseen });
       d.segments = d.segments.filter((g) => g.vehicle !== d.vehicle);
-      d.segments.push(App.day.newSegment(d.vehicle, { checkInTime: time, checkInAt: at, startKm: km }));
+      d.segments.push(App.day.newSegment(d.vehicle, { checkInTime: time, checkInAt: at, startKm: km, product }));
       App.day.saveLocal();
     } catch (error) { return saveFailed(error); }
     await upload("Checked in", `${d.vehicle} at ${time} · Start KM ${fmtN(km)}`, "Check-in not uploaded");
+  }
+
+  // Decision 4: the product can be changed (or chosen, for a check-in from before this version) until Check-out.
+  function openProduct() {
+    const g = App.day.segment();
+    App.openSheet({
+      title: `Product on ${esc(g.vehicle)}`,
+      body: productPicker(g.product),
+      footer: `<button class="btn btn-outline" data-action="sheetCancel">Cancel</button><button class="btn btn-primary" data-action="confirmProduct">Save</button>`,
+    });
+  }
+
+  async function confirmProduct() {
+    const s = S(), g = App.day.segment(), product = pickedProduct();
+    if (!product) return App.sheetErr(NO_PRODUCT);
+    App.closeSheet(false);
+    if (product === g.product) return App.render();
+    try {
+      App.outbox.add("shift.product", { ownerId: s.session.userId, workDate: s.day.date, vehicleNo: g.vehicle, product });
+      g.product = product;
+      App.day.saveLocal();
+    } catch (error) { return saveFailed(error); }
+    await upload("Product saved", `${g.vehicle}: ${App.productName(product)}`, "Product not uploaded");
   }
 
   function openCheckOut() {
@@ -179,7 +212,8 @@
         ${ret
           ? `<div class="note-box">You drove ${esc(to)} earlier today. Its Start KM is where you left it: <b>${fmtN(ret.endKm ?? App.day.stretchStartKm(ret))}</b>. New deliveries go into the same ${esc(to)} report.</div>`
           : `<div class="field"><label class="label" for="swStart">Start KM for ${esc(to)} *</label>
-              <input class="input num" id="swStart" type="text" inputmode="numeric" data-num="int" autocomplete="off" placeholder="e.g. 61005"></div>`}
+              <input class="input num" id="swStart" type="text" inputmode="numeric" data-num="int" autocomplete="off" placeholder="e.g. 61005"></div>
+            ${productPicker()}`}
         <div class="steps"><b>What happens</b><ol>
           <li>${esc(from)} is checked out now.</li>
           <li>${esc(from)}'s daily report is uploaded.</li>
@@ -197,8 +231,11 @@
     const endKm = numVal("#swEnd");
     const curStart = Number(App.day.stretchStartKm(cur));
     if (!(endKm >= curStart)) return App.sheetErr(`End KM for ${from} must be at least ${fmtN(curStart)}.`);
-    let startKm = null;
-    if (!ret) { startKm = numVal("#swStart"); if (!(startKm >= 0)) return App.sheetErr(`Enter the Start KM for ${to}.`); }
+    let startKm = null, product = "";
+    if (!ret) {
+      startKm = numVal("#swStart"); if (!(startKm >= 0)) return App.sheetErr(`Enter the Start KM for ${to}.`);
+      product = pickedProduct(); if (!product) return App.sheetErr(NO_PRODUCT);
+    }
     App.sheetBusy(true);
     // Every step must succeed before leaving the vehicle; otherwise the driver stays on it.
     const time = nowHHMM(), at = nowIso();
@@ -223,8 +260,8 @@
         Object.assign(back, { resumeKm: back.endKm ?? App.day.stretchStartKm(back), checkOutTime: "", checkOutAt: "", endKm: null, reportUploaded: false });
       } else {
         const t2 = nowHHMM(), at2 = nowIso();
-        App.outbox.add("shift.checkin", { row: shiftRow(to, startKm, t2, at2) });
-        d.segments.push(App.day.newSegment(to, { checkInTime: t2, checkInAt: at2, startKm }));
+        App.outbox.add("shift.checkin", { row: shiftRow(to, startKm, t2, at2, product) });
+        d.segments.push(App.day.newSegment(to, { checkInTime: t2, checkInAt: at2, startKm, product }));
       }
       d.vehicle = to;
       App.day.saveLocal();
@@ -713,7 +750,7 @@
   App.flows = { openAdd, checkInConflict };
 
   Object.assign(App.ACTIONS, {
-    checkin: openCheckIn, confirmCheckIn, confirmSwitch,
+    checkin: openCheckIn, confirmCheckIn, confirmSwitch, changeProduct: openProduct, confirmProduct,
     checkout: openCheckOut, confirmCheckOut,
     offduty: openOffDuty, confirmOffDuty, resumeWork: openResume, confirmResume,
     reload: () => openReload(), confirmReload, pickPlant: (d) => pickPlant(d.id),

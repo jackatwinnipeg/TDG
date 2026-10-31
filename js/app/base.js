@@ -5,13 +5,21 @@
   "use strict";
   const App = (window.TDG_APP = window.TDG_APP || {});
 
-  App.VERSION = "1.0.4";
+  App.VERSION = "1.0.5";
   // Where the app looks for a newer APK (android.json beside it, ANDROID_APP_PROPOSAL.md 3.7).
   // Set in js/supabaseConfig.js (test builds for the local server write their own); empty: no check.
   App.UPDATE_URL = window.TDG_UPDATE_URL || "";
   // Running inside the Android app (Capacitor) rather than a browser.
   App.inApp = !!window.Capacitor?.isNativePlatform?.();
   App.KG_PER_LB = 0.45359237;
+  // The one product the truck carries, chosen at Check-in (PRODUCTS_PROPOSAL.md; shift column product).
+  App.PRODUCTS = [
+    { code: "UN1073", name: "OXYGEN", text: "UN1073, OXYGEN, REFRIGERATED LIQUID, 2.2(5.1)" },
+    { code: "UN1977", name: "NITROGEN", text: "UN1977, NITROGEN, REFRIGERATED LIQUID, 2.2" },
+    { code: "UN1951", name: "ARGON", text: "UN1951, ARGON, REFRIGERATED LIQUID, 2.2" },
+    { code: "UN2187", name: "CARBON DIOXIDE", text: "UN2187, CARBON DIOXIDE, REFRIGERATED LIQUID, 2.2" },
+  ];
+  App.productName = (code) => { const p = App.PRODUCTS.find((x) => x.code === code); return p ? `${p.code} ${p.name}` : ""; };
 
   const $ = (sel, root = document) => root.querySelector(sel);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));

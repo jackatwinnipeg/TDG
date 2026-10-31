@@ -576,8 +576,9 @@
         };
       }
 
-      function setCheckboxesFromRows(rows) {
-        const text = JSON.stringify(rows).toLowerCase();
+      // product: the UN number chosen at Check-in (PRODUCTS_PROPOSAL.md); days before it keep the guess from the rows.
+      function setCheckboxesFromRows(rows, product) {
+        const text = (product || JSON.stringify(rows)).toLowerCase();
 
         const hasO2 =
           text.includes("oxygen") || text.includes("un1073") || text.includes('"product_oxygen":true');
@@ -755,7 +756,7 @@
           const vehicle=await TDG_CORE.vehicleContext(getSupabaseClientStrict(),records[0].owner_id,date,records[0].vehicle_no,records);
           records[0]={...records[0],tdg_volume:vehicle.opening};
           fillHeader(date, records,context);
-          setCheckboxesFromRows(records);
+          setCheckboxesFromRows(records, context.shift?.product);
           fillTable(records,vehicle.others);
 
           document.title = `${date}.pdf`;

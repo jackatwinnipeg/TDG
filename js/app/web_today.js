@@ -104,6 +104,7 @@
         <span class="w-note" id="vehHint">${{ off: "The truck you are driving.", on: "To switch trucks, change the number here.", out: "The day is checked out." }[st]}</span></div>
       <dl class="w-kv">${kv("Check-in", App.day.dayStart() || dash)}${kv("Start KM", from != null ? fmtN(from) : dash)}${kv("End KM", g?.endKm != null ? fmtN(g.endKm) : dash)}${kv("Total KM", from != null && g?.endKm != null ? fmtN(g.endKm - from) : dash)}</dl>
       <div class="w-inline"><label for="weekCycle">Week cycle</label><select class="select" id="weekCycle">${[1, 2, 3, 4, 5, 6, 7, 8].map((n) => `<option ${n === Number(d.weekCycle) ? "selected" : ""}>${n}</option>`).join("")}</select></div>
+      ${st === "off" ? "" : `<div class="w-inline"><span>Product</span><span style="display:flex;align-items:center;gap:8px;text-align:right"><b>${g?.product ? esc(App.productName(g.product)) : "Not chosen"}</b>${st === "on" ? ` <button class="btn btn-outline btn-sm" data-action="changeProduct">${g?.product ? "Change" : "Choose"}</button>` : ""}</span></div>`}
       ${segs.length > 1 ? `<h3 class="w-h3">Trucks today</h3>${segs.map((s) => `<div class="w-line"><span class="w-what">${esc(s.vehicle)}<small class="num">${esc(s.checkInTime)}–${esc(s.checkOutTime || "now")}${s.endKm != null ? ` · ${fmtN(s.endKm - s.startKm)} km` : ""}</small></span>${!s.checkOutTime ? W.pill("Driving", "pos") : s.reportUploaded ? W.pill("Report uploaded") : W.pill("Checked out")}</div>`).join("")}` : ""}
       <div class="w-foot">${action}</div>`, { span: 4, cls: "col", tools: pill });
   }

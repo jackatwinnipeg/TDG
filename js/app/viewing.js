@@ -96,6 +96,7 @@
           <div class="kmbox"><div class="k">Vehicles</div><div class="v">${v.shifts.length || "—"}</div></div>
           <div class="kmbox"><div class="k">Week Cycle</div><div class="v">${esc(cycle || "—")}</div></div>
         </div>
+        ${seg?.product ? `<p class="muted small" style="margin:12px 0 0">Product: ${esc(App.productName(seg.product))}</p>` : ""}
         ${v.shifts.length > 1 ? `<p class="muted small" style="margin:12px 0 0">Vehicles today: ${v.shifts.map((r) => esc(r.vehicle_no)).join(", ")}</p>` : ""}
       </section>
       <section class="card" aria-label="Today's deliveries">

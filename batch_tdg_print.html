@@ -613,8 +613,9 @@
         };
       }
 
-      function setProductCheckboxes(sheet, records) {
-        const text = JSON.stringify(records).toLowerCase();
+      // product: the UN number chosen at Check-in (PRODUCTS_PROPOSAL.md); days before it keep the guess from the records.
+      function setProductCheckboxes(sheet, records, product) {
+        const text = (product || JSON.stringify(records)).toLowerCase();
 
         const hasO2 =
           text.includes("oxygen") ||
@@ -765,7 +766,7 @@
         setText(sheet, "sigSign", signature);
         setText(sheet, "sigDate", group.date);
 
-        setProductCheckboxes(sheet, sorted);
+        setProductCheckboxes(sheet, sorted, shift?.product);
 
         let runningKg = tdgStartKg;
         // Other drivers' records on this vehicle the same day, applied in time order (not printed).

@@ -294,7 +294,7 @@
   }
 
   /* ---------------- shift (tdg_shift_sessions) ---------------- */
-  const SHIFT_COLUMNS = "id, owner_id, work_date, driver_number, driver_name, vehicle_no, start_km, check_in_at, check_in_time, check_out_at, check_out_time, updated_at";
+  const SHIFT_COLUMNS = "id, owner_id, work_date, driver_number, driver_name, vehicle_no, start_km, check_in_at, check_in_time, check_out_at, check_out_time, updated_at, product";
   // One row per vehicle driven that day (MULTI_VEHICLE_PROPOSAL.md section 4).
   async function fetchShifts(ownerId, workDate) {
     const { data } = await call(sb().from("tdg_shift_sessions").select(SHIFT_COLUMNS).eq("owner_id", ownerId).eq("work_date", workDate).order("check_in_at", { ascending: true }));
@@ -453,6 +453,12 @@
       const existing = await fetchShift(ownerId, workDate, vehicleNo);
       if (!existing) throw Object.assign(new Error(`No check-in for ${vehicleNo} on the server for this day.`), { transient: false });
       return updateShift(existing, { check_out_at: null, check_out_time: null, updated_at: nowIso() }, "Return to vehicle");
+    },
+    // The product changed on Today (PRODUCTS_PROPOSAL.md decision 4).
+    async "shift.product"({ ownerId, workDate, vehicleNo, product }) {
+      const existing = await fetchShift(ownerId, workDate, vehicleNo);
+      if (!existing) throw Object.assign(new Error(`No check-in for ${vehicleNo} on the server for this day.`), { transient: false });
+      return updateShift(existing, { product, updated_at: nowIso() }, "Product");
     },
     async "settings.weekCycle"({ row }) {
       const { data } = await call(sb().from("tdg_user_settings").upsert(row, { onConflict: "owner_id" }).select("week_cycle_anchor").single());

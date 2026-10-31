@@ -22,6 +22,7 @@
     // Start KM of the current stretch: after coming back to a vehicle it is the End KM entered when
     // the driver left it, not the day's first Start KM (owner's correction, 2026-10-24).
     resumeKm: null,
+    product: "", // PRODUCTS_PROPOSAL.md: "" = not chosen (a check-in from before app 1.0.5)
     reportUploaded: false, updatedAt: "", snapshot: null, ...fields,
   });
 
@@ -270,6 +271,7 @@
         ...mine, vehicle,
         checkInTime: row.check_in_time || "", checkInAt: row.check_in_at || "", startKm: Number(row.start_km),
         checkOutTime: row.check_out_time || "", checkOutAt: row.check_out_at || "", updatedAt: row.updated_at,
+        product: row.product || "",
         endKm: row.check_out_time ? mine.endKm : null,
         resumeKm: row.check_out_time ? null : mine.resumeKm,
       };
@@ -307,7 +309,7 @@
   async function refreshFromServer() {
     const d = S().day;
     const jobs = [];
-    if (!pendingKinds(["shift.checkin", "shift.checkout", "shift.reopen"])) jobs.push(syncSegments());
+    if (!pendingKinds(["shift.checkin", "shift.checkout", "shift.reopen", "shift.product"])) jobs.push(syncSegments());
     jobs.push(App.data.loadWeekCycle(ownerId(), d.date).then((n) => { d.weekCycle = n; }));
     const results = await Promise.allSettled(jobs);
     await loadOpening();

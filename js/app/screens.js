@@ -106,6 +106,11 @@
           <label class="label" for="weekCycle" style="margin:0">Week Cycle</label>
           <select class="select" id="weekCycle">${[1, 2, 3, 4, 5, 6, 7, 8].map((n) => `<option ${n === Number(d.weekCycle) ? "selected" : ""}>${n}</option>`).join("")}</select>
         </div>
+        ${st === "off" ? "" : `<div class="cycle-row">
+          <span class="label" style="margin:0">Product</span>
+          <b class="grow" style="text-align:right">${g?.product ? esc(App.productName(g.product)) : "Not chosen"}</b>
+          ${st === "on" ? `<button class="btn btn-outline btn-sm" data-action="changeProduct">${g?.product ? "Change" : "Choose"}</button>` : ""}
+        </div>`}
         ${action}
         ${segmentsHtml()}
       </section>`;
