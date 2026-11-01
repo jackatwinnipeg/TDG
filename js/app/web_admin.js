@@ -23,7 +23,7 @@
   const needAdmin = () => (adminJs ||= new Promise((resolve, reject) => {
     if (window.TDG_ADMIN) return resolve();
     const s = document.createElement("script");
-    s.src = "./js/admin.js?v=2";
+    s.src = "./js/admin.js?v=3";
     s.onload = () => (window.TDG_ADMIN ? resolve() : reject(new Error("The admin tools did not load.")));
     s.onerror = () => { adminJs = null; reject(new Error("The admin tools did not load. Check the connection and try again.")); };
     document.head.appendChild(s);
@@ -111,7 +111,7 @@
         <div class="field"><label class="label" for="nuName">Name *</label><input class="input" id="nuName" maxlength="60" autocomplete="off"></div>
         <div class="grid2">
           <div class="field"><label class="label" for="nuDn">Driver Number *</label><input class="input" id="nuDn" autocomplete="off" aria-describedby="nuDnHint"></div>
-          <div class="field"><label class="label" for="nuRole">Role *</label><select class="select" id="nuRole">${A().ROLES.map(([k, l]) => `<option value="${k}" ${k === "driver" ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+          <div class="field"><label class="label" for="nuRole">Role *</label><select class="select" id="nuRole">${A().ROLES.map(([k, l, full]) => `<option value="${k}" ${k === "driver" ? "selected" : ""}>${full || l}</option>`).join("")}</select></div>
         </div>
         <p class="hint" id="nuDnHint" style="margin-top:-8px">Used to sign in. Letters, digits, dot, dash or underscore; 2 to 32 characters.</p>
         <div class="field"><label class="label" for="nuEmail">Work email *</label><input class="input" id="nuEmail" type="email" autocomplete="off"></div>

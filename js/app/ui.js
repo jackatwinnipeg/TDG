@@ -10,7 +10,7 @@
   App.onChange = {};
   App.onInput = {};
 
-  const ROLE_LABEL = { driver: "Driver", supervisor: "Supervisor", manager: "Manager", viewer: "Viewer", admin: "Admin" };
+  const ROLE_LABEL = { driver: "Driver", supervisor: "Supervisor", manager: "Manager", viewer: "CSR", admin: "Admin" };
   App.ROLE_LABEL = ROLE_LABEL;
   App.canRecord = () => ["driver", "supervisor", "admin"].includes(App.S.role);
   // Customers (ROLES_PROPOSAL.md decision 5): everyone but Viewer adds; Supervisor, Manager and

@@ -1179,7 +1179,7 @@ function writeOutbox(rows){TDG_STORAGE.setItem(LS_OUTBOX,JSON.stringify(rows));}
 function operationKey(r){return JSON.stringify([r.date,r.vehicleNo,r.accountNumber,r.arrivalTime,r.eventType||'',r.deliveredVolume,r.reloadAmountKg,r.adjustmentAmountLbs,r.adjustmentReason,r.notes]);}
 async function syncRecordToSupabase(rec){
  const sb=window.supabaseClient,sess=TDG_AUTH.getSession();if(!sess?.userId||!sb?.auth)throw new Error('Login required');
- if(rec.ownerId&&rec.ownerId!==sess.userId)throw new Error('Owner mismatch');if(sess.role==='viewer')throw new Error('Viewer cannot create records');
+ if(rec.ownerId&&rec.ownerId!==sess.userId)throw new Error('Owner mismatch');if(sess.role==='viewer')throw new Error('CSR cannot create records');
  const amount=Number(rec.deliveredVolume??rec.delivered_volume??0);if(!Number.isFinite(amount)||amount<0||!rec.vehicleNo)throw new Error('Invalid quantity or vehicle');
  const pending=readOutbox(),existing=pending.find(r=>r.clientRecordId===rec.clientRecordId||operationKey(r)===operationKey(rec));
  if(!existing&&pending.length)throw new Error('A pending record must be retried first. Reload to synchronize it.');

@@ -30,7 +30,9 @@
     ["supervisor", "Supervisor"],
     ["manager", "Manager"],
     ["driver", "Driver"],
-    ["viewer", "Viewer"],
+    // CALLIN_PROPOSAL.md decision 1: Viewer is now CSR (stored value stays "viewer" until the Call-in build);
+    // the third item is the full name, shown only in the Add User role list.
+    ["viewer", "CSR", "CSR (Customer Service Representative)"],
   ];
   const roleLabel = (r) => (ROLES.find(([k]) => k === r) || [r, r])[1];
 
@@ -303,7 +305,7 @@
       <div class="row2" style="margin-top:10px">
         <div><label for="f_displayName">Display Name</label><input id="f_displayName" value="${escapeHtml(u.displayName || "")}" /></div>
         <div><label for="f_role">Role</label>
-          <select id="f_role">${ROLES.map(([k, n]) => `<option value="${k}" ${role === k ? "selected" : ""}>${n}</option>`).join("")}</select></div>
+          <select id="f_role">${ROLES.map(([k, n, full]) => `<option value="${k}" ${role === k ? "selected" : ""}>${full || n}</option>`).join("")}</select></div>
       </div>
       <div class="row2" style="margin-top:10px">
         <div><label for="f_vehicleNo">Vehicle No</label><input id="f_vehicleNo" value="${escapeHtml(u.vehicleNo || "")}" /></div>
