@@ -12,6 +12,11 @@
   const LS_USERS = "tdg_users_compat_v1";
   const LS_LEGACY_SUPABASE_SESSION = "tdg_supabase_session_v1";
   const LS_TDG_PROFILE = "tdg_auth_profile_v1";
+  // Website only (owner, 2026-11-01): 10 minutes without use of any open page signs out, so the next sign-in
+  // needs the password. The last use is kept in localStorage, so every tab of the browser shares it.
+  const LS_LAST_USE = "tdg_web_last_use";
+  const IDLE_MS = 10 * 60 * 1000;
+  const onWebsite = !window.Capacitor?.isNativePlatform?.();
 
   const nowIso = () => new Date().toISOString();
   const safe = (value) => String(value ?? "").trim();
@@ -338,6 +343,41 @@
     }
   }
 
+  function idleTooLong() {
+    if (!onWebsite) return false;
+    try {
+      const last = Number(localStorage.getItem(LS_LAST_USE));
+      return last > 0 && Date.now() - last > IDLE_MS;
+    } catch {
+      return false;
+    }
+  }
+
+  function watchUse() {
+    if (!onWebsite) return;
+    let written = 0;
+    const signOutIfIdle = () => {
+      if (!idleTooLong() || isLoginPage()) return false;
+      if (!redirecting) logout();
+      return true;
+    };
+    const used = () => {
+      if (Date.now() - written < 5000) return;
+      // A computer woken after a long sleep signs out before its first move counts as use.
+      if (signOutIfIdle()) return;
+      written = Date.now();
+      try {
+        localStorage.setItem(LS_LAST_USE, String(written));
+      } catch {}
+    };
+    for (const type of ["pointerdown", "pointermove", "keydown", "wheel", "scroll", "touchstart"]) {
+      window.addEventListener(type, used, { capture: true, passive: true });
+    }
+    if (!idleTooLong()) used();
+    setInterval(signOutIfIdle, 15000);
+    document.addEventListener("visibilitychange", signOutIfIdle);
+  }
+
   function getUsers() {
     try {
       return JSON.parse(localStorage.getItem(LS_USERS) || "[]");
@@ -375,6 +415,10 @@
       authInitializationComplete = true;
       return null;
     }
+
+    // A page opened after 10 minutes without use (tab closed, computer asleep) finds the sign-in gone.
+    if (idleTooLong()) await clearInvalidSupabaseSession();
+    watchUse();
 
     sb.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_OUT") {
