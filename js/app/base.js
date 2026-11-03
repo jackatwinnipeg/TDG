@@ -5,7 +5,7 @@
   "use strict";
   const App = (window.TDG_APP = window.TDG_APP || {});
 
-  App.VERSION = "1.0.5";
+  App.VERSION = "1.0.6";
   // Where the app looks for a newer APK (android.json beside it, ANDROID_APP_PROPOSAL.md 3.7).
   // Set in js/supabaseConfig.js (test builds for the local server write their own); empty: no check.
   App.UPDATE_URL = window.TDG_UPDATE_URL || "";

@@ -65,7 +65,7 @@
     const byKey = await lookupCustomers(rows);
     const choices = await addressChoices();
     const inPlan = new Set(RT().activeStops(base).filter((s) => s.acc).map((s) => P().normAcc(s.acc)));
-    const out = { rows: rows.length, z02: [], z01: [], attn: [], fmt: 0, inst: 0, remembered: 0, dup: 0, same: 0, carry: 0, byKey };
+    const out = { rows: rows.length, z02: [], z01: [], attn: [], removed: [], fmt: 0, inst: 0, remembered: 0, dup: 0, same: 0, carry: 0, byKey };
     const seen = new Set();
     for (const row of rows) {
       const k = P().normAcc(row.pos);
@@ -176,8 +176,18 @@
   // Italic rows of a PDF list: carryovers needing fills (decision 38).
   const carryChip = (row) => (row?.carry ? `<span class="chip brand" title="Carryover needing a fill (italic in the PDF)">Carryover</span>` : "");
 
+  // One customer of the list: name, address and the driver's button (decision 55).
+  function listRow(it, removed) {
+    const name = it.c?.accountName || it.row.name || it.row.pos;
+    const place = [it.addr || it.c?.accountAddress || it.row.addr, it.c?.city || it.row.city].filter(Boolean).join(", ");
+    const btn = removed ? `<button class="btn btn-sm btn-outline" data-action="putBack" data-key="${esc(it.key)}">Put back</button>`
+      : `<button class="btn btn-sm btn-outline" data-action="dropFromList" data-key="${esc(it.key)}" aria-label="Remove ${esc(name)}">${icon("trash", 16)}</button>`;
+    return `<div class="mini-row" style="align-items:center"><span class="grow" style="min-width:0"><b class="ellipsis" style="display:block">${esc(name)}</b><span class="small muted">${esc(place)}</span></span>${carryChip(it.row)}${btn}</div>`;
+  }
+
   function attnCard(it) {
     const u = up(), r = u.res[it.key] || {}, row = it.row, ok = isResolved(it);
+    const drop = `<button class="btn btn-sm btn-outline" data-action="dropFromList" data-key="${esc(it.key)}">${icon("trash", 14)} Remove</button>`;
     const opt = (field, val, label) => `<button class="btn btn-sm btn-outline" data-action="resolve" data-key="${esc(it.key)}" data-field="${field}" data-val="${esc(val)}">${label}</button>`;
     const head = { missing: "Not in Customers", noroute: "Route is missing", addr: "Address is different", geo: "Location not found", twin: "Two customers" }[it.type];
     let body = "", opts = "", done = "";
@@ -208,8 +218,8 @@
     return `<div class="attn ${ok ? "done" : ""}">
       <div class="attn-h"><span><b>${esc(row.name || it.c?.accountName || row.pos)}</b> ${carryChip(row)}</span><span class="chip ${ok ? "ok" : "warn"}">${ok ? `${icon("check", 12)} Done` : head}</span></div>
       ${body}
-      ${ok ? `<div class="row" style="margin-top:8px"><span class="grow small"><b>${esc(done)}</b>${it.type === "addr" && r.addr !== "update" ? `<div class="muted">Remembered for this customer.</div>` : ""}</span><button class="btn btn-sm btn-outline" data-action="unresolve" data-key="${esc(it.key)}">Change</button></div>`
-        : `<div class="opt-row">${opts}</div>${it.type === "addr" ? `<p class="hint">Your choice is remembered for this customer.</p>` : ""}`}
+      ${ok ? `<div class="row" style="margin-top:8px"><span class="grow small"><b>${esc(done)}</b>${it.type === "addr" && r.addr !== "update" ? `<div class="muted">Remembered for this customer.</div>` : ""}</span><button class="btn btn-sm btn-outline" data-action="unresolve" data-key="${esc(it.key)}">Change</button>${drop}</div>`
+        : `<div class="opt-row">${opts}${drop}</div>${it.type === "addr" ? `<p class="hint">Your choice is remembered for this customer.</p>` : ""}`}
     </div>`;
   }
 
@@ -261,8 +271,9 @@
         <div class="kmbox"><div class="k">To check</div><div class="v">${a.attn.length}</div></div>
       </div>
       ${a.attn.length ? `<h2 class="sec-h">Needs attention</h2>${a.attn.map(attnCard).join("")}` : ""}
-      <details class="fold"><summary>Z02 · ${a.z02.length} to plan</summary><div class="fold-b">${a.z02.map(({ c, addr, row }) => `<div class="mini-row"><span class="grow ellipsis"><b>${esc(c.accountName)}</b> <span class="muted">${esc(addr)}</span></span>${carryChip(row)}</div>`).join("") || `<p class="muted small">None.</p>`}</div></details>
-      <details class="fold"><summary>Z01 · ${a.z01.length} to plan</summary><div class="fold-b">${a.z01.map(({ c, addr, row }) => `<div class="mini-row"><span class="grow ellipsis"><b>${esc(c.accountName)}</b> <span class="muted">${esc(addr)}, ${esc(c.city)}</span></span>${carryChip(row)}</div>`).join("") || `<p class="muted small">None.</p>`}</div></details>
+      <details class="fold" open><summary>Z02 · ${a.z02.length} to plan</summary><div class="fold-b">${a.z02.map((it) => listRow(it)).join("") || `<p class="muted small">None.</p>`}</div></details>
+      <details class="fold" open><summary>Z01 · ${a.z01.length} to plan</summary><div class="fold-b">${a.z01.map((it) => listRow(it)).join("") || `<p class="muted small">None.</p>`}</div></details>
+      ${a.removed.length ? `<details class="fold" open><summary>Removed · ${a.removed.length} not planned</summary><div class="fold-b">${a.removed.map((it) => listRow(it, true)).join("")}</div></details>` : ""}
       ${extra ? `<div class="note-box">This week's ${extra} undelivered stop${extra > 1 ? "s are" : " is"} planned together with this list.</div>` : ""}
       <div class="info-list">${info.map((t) => `<div class="small muted">• ${esc(t)}</div>`).join("")}</div>`;
   }
@@ -401,12 +412,14 @@
       ${all.map(({ d, L, list }) => `<section class="card plan-day" style="--dc:${RT().dayColor(p, d)}">
         <div class="card-h"><h2><span class="day-dot"></span>${d === from ? "Today" : weekday(d)} <span class="num">${d}</span></h2><span class="muted small num">${list.length} stops · ${RT().fmtKm(L.m)} km · ${RT().fmtDur(L.s)}</span></div>
         ${list.length ? list.map((s, i) => `<button class="mini-stop ${s.status}" data-action="stopTap" data-id="${esc(s.id)}" data-owner="draft"><span class="num-badge sm">${s.status === "done" ? icon("check", 12) : i + 1}</span><span class="grow ellipsis"><b>${esc(s.name)}</b> <span class="muted">${esc(s.addr)}</span></span>${RT().srcChips(s)}</button>`).join("") : `<p class="muted small" style="margin:0">No stops.</p>`}
+        ${RT().canChangeDay(p, d) ? RT().changeDayBtn(d, "draft", "btn btn-sm btn-outline block") : ""}
       </section>`).join("")}
       <button class="btn btn-outline block" data-action="replanDraft">${icon("update", 18)} Re-plan</button>
       <p class="hint" style="text-align:center">Tap a stop to move it to another day or remove it. Driving times only.</p>`;
   }
 
-  async function replanDraft() {
+  const replanDraft = () => RT().confirmReplan(doReplanDraft);
+  async function doReplanDraft() {
     const p = R().draft, u = up();
     const dates = p.dates.filter((d) => d >= RT().today() && (!u || u.dates.has(d) || p.stops.some((s) => s.date === d && s.status === "pending")));
     const pend = p.stops.filter((s) => s.status === "pending");
@@ -451,6 +464,24 @@
       title: current ? "Route saved" : "Next week's route saved",
       detail: `${n} stop${n === 1 ? "" : "s"} over ${days} day${days > 1 ? "s" : ""}.${current && plan.dates.includes(RT().today()) ? " Today's Route is on the Today screen." : ""}`,
     });
+  }
+
+  /* ---------------- customers the driver takes off the list (decision 55) ---------------- */
+  // Moved out of Z02, Z01 or Needs attention, so they are not planned, not asked about and their answers not saved.
+  function dropFromList(d) {
+    const a = up().an;
+    for (const group of ["z02", "z01", "attn"]) {
+      const i = a[group].findIndex((x) => x.key === d.key);
+      if (i >= 0) { a.removed.push({ ...a[group].splice(i, 1)[0], group }); break; }
+    }
+    App.render();
+  }
+  function putBack(d) {
+    const a = up().an, i = a.removed.findIndex((x) => x.key === d.key);
+    if (i < 0) return;
+    const { group, ...it } = a.removed.splice(i, 1)[0];
+    a[group].push(it);
+    App.render();
   }
 
   /* ---------------- answers in Needs attention ---------------- */
@@ -550,6 +581,7 @@
       ${all.map(({ d, L, list }) => `<section class="card plan-day" style="--dc:${RT().dayColor(np, d)}">
         <div class="card-h"><h2><span class="day-dot"></span>${weekday(d)} <span class="num">${d}</span></h2><span class="muted small num">${list.length} stops · ${RT().fmtKm(L.m)} km · ${RT().fmtDur(L.s)}</span></div>
         ${list.map((s, i) => `<button class="mini-stop" data-action="stopTap" data-id="${esc(s.id)}" data-owner="next"><span class="num-badge sm">${i + 1}</span><span class="grow ellipsis"><b>${esc(s.name)}</b> <span class="muted">${esc(s.addr)}</span></span></button>`).join("") || `<p class="muted small" style="margin:0">No stops.</p>`}
+        ${RT().canChangeDay(np, d) ? RT().changeDayBtn(d, "next", "btn btn-sm btn-outline block") : ""}
       </section>`).join("")}
       <p class="hint" style="text-align:center">Tap a stop to move it to another day or remove it.</p>`;
   }
@@ -561,8 +593,9 @@
     const u = up();
     if (!u?.an || u.busy) return "";
     const left = u.an.attn.filter((it) => !isResolved(it)).length;
-    return `<span class="grow small">${left ? `<b>${left}</b> to answer` : "All checked"}</span>
-      <button class="btn btn-primary" data-action="toDates" ${left ? "disabled" : ""}>Next: Days ${icon("chev", 16)}</button>`;
+    const nothing = !left && !stopsToPlan(baseFor(u.week), replacing()).length;
+    return `<span class="grow small">${left ? `<b>${left}</b> to answer` : nothing ? "Nothing to plan" : "All checked"}</span>
+      <button class="btn btn-primary" data-action="toDates" ${left || nothing ? "disabled" : ""}>Next: Days ${icon("chev", 16)}</button>`;
   };
   App.actionbars.planSetup = () => `<button class="btn btn-primary block lg" data-action="planRoute" ${up()?.dates.size && !up().planning ? "" : "disabled"}>${up()?.planning ? "Planning…" : "Plan route"}</button>`;
   App.actionbars.planReview = () => `<button class="btn btn-primary block lg" data-action="saveRoute">Save route</button>`;
@@ -576,6 +609,8 @@
     unresolve: (d) => { delete up().res[d.key]; App.render(); },
     geoTry,
     addFromList,
+    dropFromList,
+    putBack,
     toDates: () => App.go("planSetup"),
     backToCheck: () => App.go("upload"),
     backToSetup: () => App.go("planSetup"),

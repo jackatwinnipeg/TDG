@@ -477,6 +477,7 @@
         <button class="btn btn-outline" data-action="emergency">${icon("siren", 18)} Emergency</button>
         <button class="btn btn-outline" data-action="startUpload">${icon("upload", 18)} Upload List</button>
         <button class="btn btn-outline" data-action="replan" data-owner="me">${icon("update", 18)} Re-plan</button>
+        ${canChangeDay(plan, d) ? changeDayBtn(d, "me") : ""}
         ${d === day && pendingOn(plan, d).length > 1 ? `<button class="btn ${editing ? "btn-primary" : "btn-outline"}" data-action="editOrder" data-owner="me">${editing ? "Save order" : "Change order"}</button>` : ""}
       </div>
       <p class="hint" style="text-align:center;margin-top:12px">Driving times only. Time at each customer is not counted, so there are no arrival times.</p>`;
@@ -571,6 +572,52 @@
     await save(owner, plan, "Stop moved", `${s.name} moved to ${dayLabel(d.date)}.`, `${s.name} moved to ${dayLabel(d.date)}`);
   }
 
+  /* ---------------- Change day (ROUTE_SWAP_PROPOSAL.md) ---------------- */
+  // A whole day's route to another day. Undelivered stops go; delivered ones and Emergency Call stops
+  // (dispatch asked for that day) stay.
+  const movable = (plan, date) => pendingOn(plan, date).filter((s) => s.src !== "emergency");
+  const canChangeDay = (plan, date) => date >= today() && movable(plan, date).length > 0;
+  function changeDayBtn(date, owner, cls = "btn btn-outline") {
+    return `<button class="${cls}" data-action="changeDay" data-date="${date}" data-owner="${esc(owner)}">${icon("calendar", 18)} Change day</button>`;
+  }
+  function openChangeDay(d) {
+    const { owner, date: from } = d, plan = planFor(owner);
+    // Today or later, Monday to Friday of the plan's week: the same days as the Delivery days calendar.
+    const opts = [0, 1, 2, 3, 4].map((i) => addDays(plan.weekStart, i)).filter((x) => x >= today() && x !== from);
+    const name = (x) => (x === today() ? "Today" : weekday(x));
+    App.openSheet({
+      title: `Change ${name(from)}'s route`,
+      body: `<p class="muted" style="margin:0 0 12px">${movable(plan, from).length} undelivered stop${movable(plan, from).length === 1 ? "" : "s"}. Choose the day to deliver ${name(from)}'s route.</p>
+        ${opts.length ? `<div class="radio-list">${opts.map((x) => {
+          const n = movable(plan, x).length;
+          return `<button data-action="doChangeDay" data-date="${x}">
+            <span class="day-dot" style="--dc:${plan.dates.includes(x) ? dayColor(plan, x) : "var(--line-strong)"}"></span>
+            <span class="grow"><b>${name(x)}</b> <span class="num">${x}</span><div class="small muted">${n ? `${n} stop${n === 1 ? " goes" : "s go"} to ${name(from)}` : "No stops to swap"}</div></span><span class="chip ${n ? "brand" : ""}">${n ? "Swap" : "Move"}</span></button>`;
+        }).join("")}</div>` : `<p class="muted">No other day left this week.</p>`}`,
+      data: { owner, from },
+    });
+  }
+  async function doChangeDay(d) {
+    const { owner, from } = S().sheet.data, to = d.date, plan = planFor(owner);
+    App.closeSheet(false);
+    const going = movable(plan, from), coming = movable(plan, to);
+    // Both days are nothing but these stops: each route is the same drive on its new day.
+    const whole = dayStops(plan, from).length === going.length && dayStops(plan, to).length === coming.length;
+    const put = (date, list) => { list.forEach((s) => { s.next = false; }); assign(date, list, dayStops(plan, date).length - movable(plan, date).length + 1); };
+    ensureDate(plan, to);
+    put(to, going);
+    put(from, coming);
+    if (!whole) {
+      await ensureCosts([plan.start, plan.end, ...dayStops(plan, from), ...dayStops(plan, to)]); // estimates without a connection
+      for (const x of [from, to]) if (pendingOn(plan, x).length) reorderToday(plan, x, curPos(plan, x));
+    }
+    if (!dayStops(plan, from).length) plan.dates = plan.dates.filter((x) => x !== from);
+    const detail = `${weekday(from)}'s route is now on ${dayLabel(to)}.${coming.length ? ` ${weekday(to)}'s route is now on ${dayLabel(from)}.` : ""}`;
+    if (owner === "me") R().day = to;
+    if (owner === "draft") { App.render(); return App.snackbar(detail); }
+    await save(owner, plan, "Route day changed", detail);
+  }
+
   function removeStop(d) {
     const owner = d.owner, plan = planFor(owner), s = findStop(owner, d.id);
     App.showConfirm({
@@ -627,11 +674,17 @@
     return App.routeTeam.saveOther([plan], title, detail, noticeItem);
   }
 
-  // Re-plan: today's remaining stops from the last delivered one; later days split again.
-  async function replan(d) {
+  // Re-plan: today's remaining stops from the last delivered one; later days split again, which
+  // undoes Change day, so that is asked first.
+  function replan(d) {
     const owner = d.owner || "me", plan = planFor(owner);
     if (!plan) return;
     if (navigator.onLine === false) return App.showResult(false, "Re-plan needs a connection", "No internet connection.", "The route on this phone is unchanged. Try again when the connection is back.");
+    if (!plan.stops.some((s) => s.status === "pending" && s.date > today())) return doReplan(owner, plan);
+    confirmReplan(() => doReplan(owner, plan));
+  }
+  const confirmReplan = (onOk) => App.showConfirm({ title: "Re-plan the route?", okText: "Re-plan", msg: "Later days are split again, which replaces any day changes.", onOk });
+  async function doReplan(owner, plan) {
     const day = today(), later = plan.dates.filter((x) => x > day), hasToday = plan.dates.includes(day);
     const laterStops = plan.stops.filter((s) => s.status === "pending" && s.date > day);
     await ensureCosts([plan.start, plan.end, ...activeStops(plan)]);
@@ -851,38 +904,33 @@
   window.addEventListener("online", () => { if (App.S && App.canRecord()) setTimeout(replanWaiting, 1500); });
 
   /* ---------------- Off-Duty (3.6, decisions 9, 19, 35) ---------------- */
-  function carryTargets(plan, day) {
-    const later = plan.dates.filter((d) => d > day);
-    if (later.length) return later;
-    const n = nextWorkday(day);
-    return n ? [n] : [];
-  }
+  // The next planned day, or the next workday. Other days stay as they are (ROUTE_SWAP_PROPOSAL.md item 3).
+  const carryTarget = (plan, day) => plan.dates.find((d) => d > day) || nextWorkday(day);
   function offDutyLine() {
     const plan = R().plan, day = today();
     const list = plan ? dayStops(plan, day) : [];
     if (!list.length) return "";
     const un = list.filter((s) => s.status === "pending");
     if (!un.length) return `<li><span class="ck ok">${icon("check", 14)}</span>All of today's route stops delivered</li>`;
-    const where = isFriday(day) ? "Deleted at Off-Duty (the week is over)" : `Moved to ${carryTargets(plan, day).map(dayLabel).join(", ")} and re-planned`;
+    const where = isFriday(day) ? "Deleted at Off-Duty (the week is over)" : `Moved to ${dayLabel(carryTarget(plan, day))}`;
     return `<li><span class="ck warn">${icon("alert", 14)}</span><span>${un.length} route stop${un.length > 1 ? "s" : ""} not delivered<div class="small muted">${where}</div></span></li>`;
   }
-  // Today's undelivered stops: on to the next chosen days (or the next workday), or deleted on Friday.
+  // Today's undelivered stops: on to the next day, where each adds the least driving, or deleted on Friday.
   async function offDuty() {
     const plan = R().plan, day = today();
     const un = plan ? pendingOn(plan, day) : [];
     if (!un.length) return "";
-    const targets = carryTargets(plan, day);
-    if (isFriday(day) || !targets.length) {
+    const target = carryTarget(plan, day);
+    if (isFriday(day) || !target) {
       plan.stops.filter((s) => s.status === "pending" && s.date >= day).forEach((s) => { s.status = "removed"; });
       await commit([plan]);
       return `${un.length} undelivered route stop${un.length > 1 ? "s were" : " was"} deleted (the week is over).`;
     }
-    un.forEach((s) => { s.carried = true; s.next = false; });
-    const moving = plan.stops.filter((s) => s.status === "pending" && s.date >= day);
-    await ensureCosts([plan.start, plan.end, ...moving]);
-    await planDates(plan, targets, moving);
+    ensureDate(plan, target);
+    await ensureCosts([plan.start, plan.end, ...dayStops(plan, target), ...un]);
+    un.forEach((s) => { Object.assign(s, { carried: true, next: false, date: target }); insertCheapest(plan, s); });
     await commit([plan]);
-    return `${un.length} undelivered route stop${un.length > 1 ? "s were" : " was"} moved to ${targets.map(dayLabel).join(", ")} and re-planned.`;
+    return `${un.length} undelivered route stop${un.length > 1 ? "s were" : " was"} moved to ${dayLabel(target)}.`;
   }
 
   /* ---------------- customer positions (decision 15) ---------------- */
@@ -936,6 +984,8 @@
     startStop,
     moveDay: (d) => { App.closeSheet(false); openMoveDay(d); },
     doMoveDay,
+    changeDay: openChangeDay,
+    doChangeDay,
     removeStop,
     deleteRoute: openDeleteRoute,
     deleteStops,
@@ -956,6 +1006,6 @@
     assign, renumber, ensureDate, dayColor, curPos, costTable, ensureCosts, locateCustomers, geocodeText, findCustomer, routeFn,
     load, refresh, persist, commit, uploaded, afterDelivery, untick, isPendingEmergency, todayCard, offDutyLine, offDuty, planDates,
     reorderToday, insertCheapest, routeMap, stopList, dayChips, routeSum, legs, fmtKm, fmtDur, srcChips, planFor, canEditOthers, reason, replanWaiting,
-    noticeHtml,
+    noticeHtml, canChangeDay, changeDayBtn, confirmReplan,
   };
 })();

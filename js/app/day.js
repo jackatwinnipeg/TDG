@@ -309,7 +309,7 @@
   async function refreshFromServer() {
     const d = S().day;
     const jobs = [];
-    if (!pendingKinds(["shift.checkin", "shift.checkout", "shift.reopen", "shift.product"])) jobs.push(syncSegments());
+    if (!pendingKinds(["shift.checkin", "shift.checkout", "shift.reopen", "shift.product", "shift.km"])) jobs.push(syncSegments());
     jobs.push(App.data.loadWeekCycle(ownerId(), d.date).then((n) => { d.weekCycle = n; }));
     const results = await Promise.allSettled(jobs);
     await loadOpening();

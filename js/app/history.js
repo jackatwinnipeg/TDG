@@ -198,6 +198,15 @@
     };
   }
 
+  // Edit KM on a day read from the server; its copy changes too, so the new KM shows at once.
+  const dayVehicle = (v) => dayFromServer(S().dayView.date, S().dayView.data).vehicles.find((x) => x.v === v);
+  function setDayKm(v, start, end) {
+    const { shifts, logs } = S().dayView.data;
+    shifts.find((r) => normVeh(r.vehicle_no) === v).start_km = start;
+    const form = logs.filter((l) => normVeh(l.vehicle_no) === v).at(-1)?.payload?.form;
+    if (form && end != null) form.endKm = end;
+  }
+
   function openDay(date, from) {
     const s = S();
     s.dayView = { date, from: from || s.screen, data: null, error: "" };
@@ -242,6 +251,7 @@
           <thead><tr><th>Vehicle</th><th>Start KM</th><th>End KM</th><th>Total</th></tr></thead>
           <tbody>${vehicles.map((x) => `<tr><td><b>${esc(x.v)}</b></td><td>${km(x.start)}</td><td>${km(x.end)}</td><td>${x.start != null && x.end != null ? fmtN(x.end - x.start) + " km" : "—"}</td></tr>`).join("")}</tbody>
         </table>
+        ${App.canEditKm(d.date) ? `<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end">${vehicles.filter((x) => x.start != null).map((x) => `<button class="btn btn-outline btn-sm" data-action="editKm" data-date="${esc(d.date)}" data-vehicle="${esc(x.v)}">Edit KM${vehicles.length > 1 ? ` · ${esc(x.v)}` : ""}</button>`).join("")}</div>` : ""}
       </section>
       <section class="card">
         <div class="card-h"><h2>Deliveries</h2></div>
@@ -463,5 +473,5 @@
     pickFillLog: (d) => { const c = App.customers.hit("flResults", Number(d.i)); if (c) previewFillLog(c); },
   });
 
-  App.history = { openDay, reload: loadHistory, hist, dateField, openPreview, waitFor, fileSafe, driverName, filteredDays, activeFilterCount, previewFillLog, previewTdg };
+  App.history = { openDay, dayVehicle, setDayKm, reload: loadHistory, hist, dateField, openPreview, waitFor, fileSafe, driverName, filteredDays, activeFilterCount, previewFillLog, previewTdg };
 })();

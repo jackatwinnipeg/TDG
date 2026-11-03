@@ -32,6 +32,7 @@
     const L = RT().legs(plan, d), list = RT().dayStops(plan, d), done = list.filter((s) => s.status === "done").length;
     const right = `<button class="btn btn-outline" data-action="emergency">${icon("siren", 16)} Emergency call</button>
       <button class="btn btn-outline" data-action="replan" data-owner="me">${icon("update", 16)} Re-plan</button>
+      ${RT().canChangeDay(plan, d) ? RT().changeDayBtn(d, "me") : ""}
       ${d === day && RT().pendingOn(plan, d).length > 1 ? `<button class="btn ${editing ? "btn-primary" : "btn-outline"}" data-action="editOrder" data-owner="me">${editing ? "Save order" : "Change order"}</button>` : ""}
       ${upload}`;
     return `

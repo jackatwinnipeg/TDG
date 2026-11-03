@@ -1,5 +1,6 @@
 /* Where the driver is (REGION_PROPOSAL.md 3.1, 3.2, decisions 3, 4, 6, 7, 10): shown at the top left.
- * Phones check their location at sign-in and the first time the app opens each day; the city and
+ * The app checks its location every time it is opened or comes back to the screen (owner, 2026-11-03);
+ * a phone's browser at sign-in and the first time it opens each day. The city and
  * province (never coordinates) are saved on the account. Computers use the account's last
  * location; an account that has never been located chooses a province once. */
 (() => {
@@ -72,17 +73,29 @@
     return fromAccount(r.data.location, "phone");
   }
 
-  // At start-up: the account's last location first, then (phones, once a day) a fresh one.
-  // Without a connection the last location seen on this phone is used.
+  let locating = false;
+  async function refresh() {
+    if (locating) return;
+    locating = true;
+    try {
+      setLoc(await locateNow(App.inApp));
+    } catch (error) {
+      console.warn("Phone location failed; using the last saved one:", error.message);
+      if (S().loc?.src === "phone") setLoc({ ...S().loc, src: "last" });
+    }
+    locating = false;
+  }
+  document.addEventListener("visibilitychange", () => { if (App.inApp && document.visibilityState === "visible" && App.S?.loc) refresh(); });
+
+  // At start-up: the account's last location first, then a fresh one (the app always, a phone's
+  // browser once a day). Without a connection the last location seen on this phone is used.
   async function init() {
     let account = null, read = false;
     try { account = await readAccount(); read = true; } catch (error) { console.warn("Location on the account not read:", error.message); }
     let saved = null;
     try { saved = JSON.parse(device.get(`loc:${S().session.userId}`, "null")); } catch {}
     setLoc(read || !saved ? fromAccount(account, isPhone() ? "last" : "account") : { ...saved, src: isPhone() ? "last" : saved.src });
-    if (isPhone() && device.get(`located:${S().session.userId}`) !== localDate()) {
-      try { setLoc(await locateNow()); } catch (error) { console.warn("Phone location failed; using the last saved one:", error.message); }
-    }
+    if (App.inApp || (isPhone() && device.get(`located:${S().session.userId}`) !== localDate())) await refresh();
     if (S().loc.src === "none" && read) openProv(true);
   }
 
@@ -99,7 +112,7 @@
       title: firstTime ? "Choose your province" : "Your location",
       tall: true,
       body: `<div class="loc-box ${l.src === "phone" ? "ok" : "warn"}" style="flex-direction:row"><span>${icon("pin", 18)}</span><div><b>${esc(label())}</b><div class="small muted">${esc(how)}</div></div></div>
-        <p class="hint" style="margin-top:0">${isPhone() ? "Your location is checked when you sign in and the first time you open the app each day. " : "Computers use the location of your last phone sign-in. "}Only the city and province are saved, never your position.</p>
+        <p class="hint" style="margin-top:0">${App.inApp ? "Your location is checked every time you open the app. " : isPhone() ? "Your location is checked when you sign in and the first time you open the app each day. " : "Computers use the location of your last phone sign-in. "}Only the city and province are saved, never your position.</p>
         ${isPhone() ? `<button class="btn btn-outline block" data-action="relocate">${icon("pin", 18)} Use phone location</button>` : ""}
         <p class="label" style="margin:16px 0 8px">Or choose a province</p>
         <div class="radio-list">${PROVINCES.map(([k, n]) => `<button class="${k === l.prov ? "on" : ""}" data-action="setProv" data-prov="${k}"><b style="width:30px">${k}</b><span class="grow">${n}</span></button>`).join("")}</div>`,

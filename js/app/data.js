@@ -460,6 +460,20 @@
       if (!existing) throw Object.assign(new Error(`No check-in for ${vehicleNo} on the server for this day.`), { transient: false });
       return updateShift(existing, { product, updated_at: nowIso() }, "Product");
     },
+    // A KM typed wrong (owner 2026-11-03). Start KM is in every report of the vehicle that day, End KM only
+    // the last one's. Delivery records are never touched: reports read these numbers first. Safe to retry.
+    async "shift.km"({ ownerId, workDate, vehicleNo, startKm, endKm }) {
+      const existing = (await fetchShifts(ownerId, workDate)).find((r) => normVeh(r.vehicle_no) === vehicleNo);
+      if (!existing) throw Object.assign(new Error(`No check-in for ${vehicleNo} on the server for this day.`), { transient: false });
+      const saved = await updateShift(existing, { start_km: startKm, updated_at: nowIso() }, "KM");
+      const logs = (await fetchDailyLogs(ownerId, workDate)).filter((l) => normVeh(l.vehicle_no) === vehicleNo && l.payload?.form);
+      for (const [i, l] of logs.entries()) {
+        const end = endKm != null && i === logs.length - 1 ? endKm : Number(l.payload.form.endKm) || 0;
+        const form = { ...l.payload.form, startKm, endKm: end, totalKm: end >= startKm ? end - startKm : 0 };
+        await call(sb().from("tdg_daily_logs").update({ payload: { ...l.payload, form } }).eq("id", l.id).eq("owner_id", ownerId).select("id").single());
+      }
+      return saved;
+    },
     async "settings.weekCycle"({ row }) {
       const { data } = await call(sb().from("tdg_user_settings").upsert(row, { onConflict: "owner_id" }).select("week_cycle_anchor").single());
       return data;

@@ -46,6 +46,8 @@
       </section>`;
   }
 
+  const editKmButton = (vehicle, label) => (App.canEditKm(App.S.day.date) ? `<button class="btn btn-outline btn-sm" data-action="editKm" data-date="${esc(App.S.day.date)}" data-vehicle="${esc(vehicle)}">${label}</button>` : "");
+
   function segmentsHtml() {
     const segs = App.day.segments();
     if (segs.length < 2) return "";
@@ -59,6 +61,7 @@
           return `<div class="seg ${cur ? "current" : ""}">
             <div class="seg-ic">${icon("truck", 20)}</div>
             <div class="grow"><b>${esc(g.vehicle)}</b><div class="small muted num">${esc(g.checkInTime)}–${esc(g.checkOutTime || "now")}${km}</div></div>
+            ${!cur ? editKmButton(g.vehicle, "Edit") : ""}
             ${state}
           </div>`;
         }).join("")}
@@ -102,6 +105,7 @@
           <div class="kmbox"><div class="k">End KM</div><div class="v">${endKm}</div></div>
           <div class="kmbox"><div class="k">Total KM</div><div class="v">${totalKm}</div></div>
         </div>
+        ${g ? `<div style="margin-top:8px;text-align:right">${editKmButton(g.vehicle, "Edit KM")}</div>` : ""}
         <div class="cycle-row">
           <label class="label" for="weekCycle" style="margin:0">Week Cycle</label>
           <select class="select" id="weekCycle">${[1, 2, 3, 4, 5, 6, 7, 8].map((n) => `<option ${n === Number(d.weekCycle) ? "selected" : ""}>${n}</option>`).join("")}</select>

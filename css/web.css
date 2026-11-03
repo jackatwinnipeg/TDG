@@ -122,9 +122,10 @@ html.web .menu-item:has(> .segmented[aria-label="Appearance"]) { display: none; 
 
 /* ---------- web screens ---------- */
 html.web .w-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+html.web .w-title > :first-child { flex: 1 1 0; min-width: 200px; } /* a narrow window wraps the buttons instead of cutting them off */
 html.web .w-title h1 { margin: 0; font-size: 24px; line-height: 1.2; font-weight: 600; letter-spacing: -0.01em; }
 html.web .w-sub { margin: 4px 0 0; color: var(--muted); }
-html.web .w-actions { display: flex; align-items: center; gap: 10px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
+html.web .w-actions { display: flex; align-items: center; gap: 10px; flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; }
 html.web .w-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
 html.web .w-grid.top { align-items: start; }
 html.web .w-panel { min-width: 0; padding: 20px; border: 1px solid var(--w-border); border-radius: 8px; background: #ffffff; }

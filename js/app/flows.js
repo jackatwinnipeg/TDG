@@ -361,6 +361,49 @@
     await upload("Back on shift", `${g.vehicle} from ${fmtN(km)} km.`, "Resume Work not uploaded");
   }
 
+  /* ---------------- Edit KM (owner 2026-11-03; app only) ---------------- */
+  // A driver fixes their own KM typed wrong, for today and the 2 days before; uploaded reports change too.
+  App.canEditKm = (date) => !App.web && App.viewing.mine() && date <= App.localDate() && date > App.addDays(App.localDate(), -3);
+  // The phone's segment on its open day, the opened day's server copy otherwise. On a vehicle the driver
+  // came back to, `back` is where this stretch began: the End KM of its last report.
+  function kmOf(date, vehicle) {
+    const g = date === S().day.date ? App.day.segment(vehicle) : null;
+    if (!g) return App.history.dayVehicle(vehicle);
+    return g.checkOutTime ? { g, start: g.startKm, end: g.endKm } : { g, start: g.startKm, back: g.resumeKm };
+  }
+  const secondKmLabel = (x) => (x.back != null ? "KM when you came back" : "End KM");
+
+  function openEditKm({ date, vehicle }) {
+    const x = kmOf(date, vehicle), second = x.back ?? x.end;
+    const field = (id, label, value) => `<div class="field"><label class="label" for="${id}">${label} *</label>
+      <input class="input num" id="${id}" type="text" inputmode="numeric" data-num="int" autocomplete="off" value="${value}"></div>`;
+    App.openSheet({
+      title: "Edit KM",
+      body: `
+        <div class="note-box">${esc(vehicle)} on ${esc(date)}. Reports already uploaded for this truck will show the new KM.</div>
+        ${field("ekStart", "Start KM", x.start)}
+        ${second != null ? field("ekSecond", secondKmLabel(x), second) : ""}`,
+      footer: `<button class="btn btn-outline" data-action="sheetCancel">Cancel</button><button class="btn btn-primary" data-action="confirmEditKm" data-date="${esc(date)}" data-vehicle="${esc(vehicle)}">Save</button>`,
+    });
+  }
+
+  async function confirmEditKm({ date, vehicle }) {
+    const x = kmOf(date, vehicle), start = numVal("#ekStart"), second = $("#ekSecond") ? numVal("#ekSecond") : null;
+    if (!(start >= 0)) return App.sheetErr("Enter the Start KM.");
+    if (second != null && !(second >= start)) return App.sheetErr(`${secondKmLabel(x)} must be at least ${fmtN(start)}.`);
+    try {
+      App.outbox.add("shift.km", { ownerId: S().session.userId, workDate: date, vehicleNo: vehicle, startKm: start, endKm: second });
+      if (x.g) {
+        x.g.startKm = start;
+        if (x.back != null) x.g.resumeKm = second;
+        else if (second != null) Object.assign(x.g, { endKm: second, resumeKm: null });
+        App.day.saveLocal();
+      } else App.history.setDayKm(vehicle, start, second);
+    } catch (error) { App.closeSheet(false); return saveFailed(error); }
+    App.closeSheet(false);
+    await upload("KM saved", `${vehicle} · Start KM ${fmtN(start)}${second != null ? ` · ${secondKmLabel(x)} ${fmtN(second)}` : ""}`, "KM not uploaded");
+  }
+
   /* ---------------- vehicle and week cycle ---------------- */
   // Changing Vehicle No while checked in switches vehicles (decision 4).
   App.onChange.vehicleInput = (input) => {
@@ -752,7 +795,7 @@
   Object.assign(App.ACTIONS, {
     checkin: openCheckIn, confirmCheckIn, confirmSwitch, changeProduct: openProduct, confirmProduct,
     checkout: openCheckOut, confirmCheckOut,
-    offduty: openOffDuty, confirmOffDuty, resumeWork: openResume, confirmResume,
+    offduty: openOffDuty, confirmOffDuty, resumeWork: openResume, confirmResume, editKm: openEditKm, confirmEditKm,
     reload: () => openReload(), confirmReload, pickPlant: (d) => pickPlant(d.id),
     adjust: openAdjust, confirmAdjust,
     addDelivery: () => openAdd(), confirmAdd, confirmArrive,
