@@ -24,8 +24,8 @@
     let run = Number(o.kg) || 0;
     const after = new Map();
     for (const r of recs) {
-      run += V().getReloadAmountKg(r) - (Number(r.deliveredVolume) || 0) * KG - V().getAdjustmentAmountLbs(r) * KG;
-      after.set(r.clientRecordId, Math.max(0, run));
+      run = Math.max(0, run + V().getReloadAmountKg(r) - (Number(r.deliveredVolume) || 0) * KG - V().getAdjustmentAmountLbs(r) * KG);
+      after.set(r.clientRecordId, run);
     }
     return { o, recs, after, bal: App.data.computeRemaining(o.kg, recs) };
   }
@@ -53,7 +53,7 @@
     const recs = records.slice().sort(byTime);
     if (!recs.length && !(Number(base) > 0)) { el.innerHTML = '<p class="w-note">The line starts with the first record of the day.</p>'; return; }
     let run = Number(base) || 0;
-    const after = recs.map((r) => (run += V().getReloadAmountKg(r) - (Number(r.deliveredVolume) || 0) * KG - V().getAdjustmentAmountLbs(r) * KG, Math.max(0, run)));
+    const after = recs.map((r) => (run = Math.max(0, run + V().getReloadAmountKg(r) - (Number(r.deliveredVolume) || 0) * KG - V().getAdjustmentAmountLbs(r) * KG)));
     const now = mins(nowHHMM()), times = recs.map((r) => mins(r.arrivalTime)).filter((m) => m != null);
     const startAt = start ?? times[0] ?? now;
     const endAt = open ? now : Math.max(startAt, ...times);

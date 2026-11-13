@@ -230,7 +230,11 @@
     const totalDeliveredLbs = list.reduce((s, r) => s + (Number(r?.deliveredVolume ?? r?.delivered_volume) || 0), 0);
     const totalDeliveredKg = totalDeliveredLbs * App.KG_PER_LB;
     const calculated = base + totalReloadKg - totalDeliveredKg - totalAdjustmentKg;
-    const remainingExactKg = Math.max(0, calculated);
+    // TDG_VOLUME.stepKg: from 2026-11-12 a balance below 0 kg counts as 0 and later records count from
+    // that 0, so they are applied in time order (ledger rows come in order and have no arrivalTime).
+    const at = (r) => window.TDG_CORE.minutesOf(r?.arrivalTime);
+    const remainingExactKg = Math.max(0, list.slice().sort((a, b) => at(a) - at(b)).reduce((kg, r) => V().stepKg(kg, V().getReloadAmountKg(r)
+      - (V().getAdjustmentAmountLbs(r) + (Number(r?.deliveredVolume ?? r?.delivered_volume) || 0)) * App.KG_PER_LB, V().getWorkDate(r)), base));
     return {
       base, baseKg: base, totalReloadKg, totalAdjustmentLbs, totalAdjustmentKg,
       totalDelivered: totalDeliveredLbs, totalDeliveredLbs, totalDeliveredKg,

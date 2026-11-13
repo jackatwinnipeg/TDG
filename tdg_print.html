@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-CN">
   <head>
-<script src="./js/tdg_core.js?v=20260912"></script>
+<script src="./js/tdg_core.js?v=20261112"></script>
     <meta charset="utf-8" />
     <meta
       name="viewport"
@@ -389,7 +389,7 @@
     <script src="./js/supabaseConfig.js?v=20260912"></script>
     <script src="./js/supabaseClient.js?v=20260912"></script>
     <script src="./js/auth_supabase.js?v=20261101"></script>
-    <script src="./js/tdg_volume.js?v=20260912"></script>
+    <script src="./js/tdg_volume.js?v=20261112"></script>
 
     <script>
       const KG_TO_LBS = 2.20462;
@@ -620,7 +620,7 @@
         document.getElementById("hdrTotalKm").textContent = header.totalKm;
         document.getElementById("hdrShiftStart").textContent = header.shiftStart;
         document.getElementById("hdrShiftFinish").textContent = header.shiftFinish;
-        document.getElementById("hdrTdgStart").textContent = tdgStartVolume;
+        document.getElementById("hdrTdgStart").textContent = tdgStartVolume === "" ? "" : String(Math.max(0, Math.trunc(num(tdgStartVolume)))); // never shown below 0
 
         document.getElementById("sigPrint").textContent = driverName;
         document.getElementById("sigSign").textContent = signature;
@@ -640,7 +640,7 @@
 
         for (let i = 0; i < rows.length; i++) {
           const due = TDG_CORE.minutesOf(sorted[i].arrival_time || sorted[i].completed_at);
-          while (waiting.length && waiting[0].minutes <= due) running += waiting.shift().kg;
+          while (waiting.length && waiting[0].minutes <= due) running = TDG_VOLUME.stepKg(running, waiting.shift().kg, first.work_date);
           if (rows[i].reload) {
             running += rows[i].reloadKg;
           } else if (rows[i].adjustment) {
@@ -649,6 +649,7 @@
             const deliveredLbs = num(rows[i].delivered);
             running -= lbsToKg(deliveredLbs);
           }
+          running = TDG_VOLUME.stepKg(running, 0, first.work_date); // never below 0 kg from 2026-11-12
           const balanceLbs = Math.max(0, Math.round(kgToLbs(running)));
           rows[i].balance = String(balanceLbs);
         }

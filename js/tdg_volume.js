@@ -14,6 +14,10 @@
   // it starts at 0 kg like the two real trucks. Replace with the owner's rule for new trucks.
   const RESET_VEHICLES = Object.freeze(["82112", "82303", "TEST01"]);
   const MAX_RAW_DEPTH = 8;
+  // Owner rule 2026-11-12: a balance below 0 kg counts as 0, and the records after it count
+  // from that 0. It starts on that day: earlier days keep the plain sum, so their signed
+  // sheets print the same numbers as before (only a Start Volume below 0 is shown as 0).
+  const FLOOR_DATE = "2026-11-12";
 
   const safe = (value) => String(value ?? "").trim();
 
@@ -85,6 +89,13 @@
       isOnOrAfterReset(record) &&
       ["tdg_adjustment", "adjustment"].includes(getEventType(record))
     );
+  }
+
+  // Balance after a change of deltaKg on a work date (deltaKg 0: the balance as that date sees it).
+  function stepKg(balanceKg, deltaKg, workDate) {
+    return safe(workDate) >= FLOOR_DATE
+      ? Math.max(0, Math.max(0, balanceKg) + deltaKg)
+      : balanceKg + deltaKg;
   }
 
   function getReloadAmountKg(record) {
@@ -173,6 +184,8 @@
   window.TDG_VOLUME = Object.freeze({
     RESET_DATE,
     RESET_VEHICLES,
+    FLOOR_DATE,
+    stepKg,
     normalizeVehicleNo,
     isResetVehicle,
     getRecordLayers,
