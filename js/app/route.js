@@ -13,7 +13,7 @@
   const sb = () => window.supabaseClient;
 
   const ROUTE_KEY = "tdg_app_route_v1";
-  const COSTS_KEY = "tdg_app_route_costs_v1";
+  const COSTS_KEY = "tdg_app_route_costs_v2";
   const KEPT = "Your change is kept on this phone and will upload automatically when the connection is back.";
   const reason = (e) => (navigator.onLine === false ? "No internet connection." : e?.message || "Request failed");
 
@@ -42,7 +42,7 @@
 
   const newPlan = (ownerId, weekStart, start, end) => ({ id: uuid(), ownerId, weekStart, dates: [], start, end, listId: null, version: 0, notice: null, stops: [] });
   const mkStop = (c, extra = {}) => ({
-    id: uuid(), acc: c.accountNumber || c.acc || "", name: c.accountName || c.name || "Stop", addr: c.accountAddress ?? c.addr ?? "", city: c.city || "",
+    id: uuid(), acc: c.accountNumber || c.acc || "", name: c.accountName || c.name || "Stop", addr: c.accountAddress ?? c.addr ?? "", city: c.city || "", prov: c.province || c.prov || "",
     lat: c.lat ?? null, lng: c.lng ?? null, date: null, seq: 0, status: "pending", src: "list", next: false, carried: false, waitReplan: false,
     doneAt: "", doneRecord: "", visits: [], product: c.product || "", rte: c.rte || "", ...extra,
   });
@@ -57,7 +57,7 @@
     id: p.id, ownerId: p.owner_id, weekStart: p.week_start, dates: (p.dates || []).slice().sort(), start: p.start_point, end: p.end_point,
     listId: p.list_id, version: p.version, notice: p.notice, updatedByName: p.updated_by_name, updatedAt: p.updated_at,
     stops: stops.filter((s) => s.plan_id === p.id).map((s) => ({
-      id: s.id, acc: s.account_number, name: s.name, addr: s.address, city: s.city, lat: s.lat, lng: s.lng, date: s.plan_date, seq: s.seq,
+      id: s.id, acc: s.account_number, name: s.name, addr: s.address, city: s.city, prov: findCustomer(s.account_number)?.province || "", lat: s.lat, lng: s.lng, date: s.plan_date, seq: s.seq,
       status: s.status, src: s.source, next: s.deliver_next, carried: s.carried, waitReplan: s.wait_replan, doneAt: s.done_at,
       doneRecord: s.done_record, visits: s.visits || [], product: s.product, rte: s.co2_rte,
     })),
@@ -95,6 +95,11 @@
   async function fnError(error) {
     try { return new Error((await error.context.json()).error || error.message); } catch { return error; }
   }
+  // The map services (not the address, not the account) did not answer: busy, refused, timed out,
+  // or no connection. Planning goes on with what is known; the driver is told (2026-11-24 outage).
+  const serviceDown = (error) => navigator.onLine === false || !!error?.down ||
+    /map service|busy|daily limit|unavailable|timed out|failed to send|failed to fetch|network/i.test(String(error?.message || ""));
+  const downError = (message) => Object.assign(new Error(message), { down: true });
   async function routeFn(body) {
     const r = await sb().functions.invoke("tdg-route", { body });
     if (r.error) throw await fnError(r.error);
@@ -119,29 +124,46 @@
   // one is asked again: the server keeps it while the address is the same, else finds it again.
   // The curb (decision 50) comes with it, worked out once per position.
   const posKey = (c) => `${Number(c.lat).toFixed(5)},${Number(c.lng).toFixed(5)}`;
+  // found[id]: a position, or null (not found). unavailable: ids the services did not answer for (no
+  // position known now). failed: ids of a request that failed as a whole (an older server, or no
+  // connection): their saved positions, if any, are still good to use.
   async function locateCustomers(custs) {
     const need = custs.filter((c) => c && c.id && (c.lat == null || c.geoSource === "auto" || c.curbFor !== posKey(c)));
-    const found = {};
+    const found = {}, unavailable = new Set(), failed = new Set();
     for (let i = 0; i < need.length; i += 100) {
-      const { results } = await routeFn({ action: "geocodeCustomers", ids: need.slice(i, i + 100).map((c) => c.id) });
-      Object.assign(found, results);
+      const ids = need.slice(i, i + 100).map((c) => c.id);
+      try {
+        const data = await routeFn({ action: "geocodeCustomers", ids });
+        Object.assign(found, data.results);
+        (data.unavailable || []).forEach((id) => unavailable.add(id));
+      } catch (error) {
+        if (!serviceDown(error)) throw error;
+        console.warn("Customer positions not looked up; using the saved ones:", error.message);
+        ids.forEach((id) => failed.add(id));
+      }
     }
     for (const c of need) {
       const p = found[c.id];
       if (p) App.data.putCustomer({ ...c, lat: p.lat, lng: p.lng, geoSource: p.source, curb: p.curb ?? null, curbFor: p.curbFor || "" }, S().loc?.prov || "");
     }
-    return found;
+    return { found, unavailable, failed };
   }
+  // A position for an address, or null when it is not on the map. Throws an error with .down when the
+  // map services did not answer, so the caller can carry on without the position.
   async function geocodeText(text) {
-    const { results } = await routeFn({ action: "geocode", items: [{ key: "a", text }] });
-    return results.a || null;
+    let data;
+    try { data = await routeFn({ action: "geocode", items: [{ key: "a", text }] }); } catch (error) {
+      throw serviceDown(error) ? Object.assign(error, { down: true }) : error;
+    }
+    if ((data.unavailable || []).includes("a")) throw downError("The map service is not answering right now.");
+    return data.results.a || null;
   }
   const findCustomer = (acc) => {
     const k = P().normAcc(acc);
     return k ? App.data.cachedCustomers().find((c) => P().normAcc(c.accountNumber) === k) || null : null;
   };
   // A stop's curb bearing, while it is the one for the customer's current position (decisions 49–50).
-  const curbOf = (s) => { const c = findCustomer(s.acc); return c && c.lat != null && c.curbFor === posKey(c) ? c.curb : null; };
+  const curbOf = (s) => { const c = findCustomer(s.acc); return c && c.lat != null && posKey(s) === posKey(c) && c.curbFor === posKey(c) ? c.curb : null; };
 
   /* ---------------- server ---------------- */
   const pendingRoute = () => App.outbox.items().some((it) => it.kind.startsWith("route."));
@@ -179,6 +201,7 @@
     try { await load(); } catch (error) { console.warn("Route not read from the server; using this phone's copy:", error.message); }
     rollWeek();
     App.render();
+    replanWaiting().catch((error) => console.warn("Waiting stops not placed yet:", error.message));
   }
 
   // Upload queue: whole plans (base version for the conflict check) and single ticks.
@@ -313,6 +336,8 @@
   const ROADS_KEY = "tdg_app_route_roads_v1";
   const asking = new Map(), refused = new Map();
   function roadLine(points) {
+    const planned = App.routePlanner?.cached(points);
+    if (planned) return Promise.resolve(planned.line);
     const key = points.map(posKey).join(";"), roads = store.get(ROADS_KEY, {}) || {};
     if (roads[key]) return Promise.resolve(roads[key]);
     if (navigator.onLine === false || Date.now() - (refused.get(key) || 0) < 300000) return Promise.resolve(null);
@@ -357,7 +382,7 @@
   function routeMap(plan, dates, owner) {
     const layers = dates.map((d) => ({ color: dayColor(plan, d), stops: dayStops(plan, d).map((s, i) => ({ s, n: i + 1 })).filter((x) => x.s.lat != null) }));
     const hidden = dates.reduce((n, d) => n + dayStops(plan, d).filter((s) => s.lat == null).length, 0);
-    const cap = `<p class="map-cap">Where the stops are, in route order (S = start). Tap a numbered stop to open it.${hidden ? ` ${hidden} stop${hidden > 1 ? "s have" : " has"} no position yet and ${hidden > 1 ? "are" : "is"} not drawn.` : ""} Roads and driving times © openrouteservice by HeiGIT.</p>`;
+    const cap = `<p class="map-cap">Where the stops are, in route order (S = start). Tap a numbered stop to open it.${hidden ? ` ${hidden} stop${hidden > 1 ? "s have" : " has"} no position yet and ${hidden > 1 ? "are" : "is"} not drawn.` : ""} Road data © OpenStreetMap contributors. Routing: OSRM / openrouteservice by HeiGIT.</p>`;
     const located = [plan.start, plan.end, ...layers.flatMap((ly) => ly.stops.map((x) => x.s))].some((p) => p?.lat != null);
     if (!located) return `<div class="empty">No positions to show yet.</div>${cap}`;
     const id = `routeMap${++mapCount}`;
@@ -366,10 +391,14 @@
   }
 
   /* ---------------- legs ---------------- */
-  const fmtKm = (m) => { const k = m / 1000; return k < 10 ? k.toFixed(1) : String(Math.round(k)); };
-  const fmtMin = (s) => Math.max(1, Math.round(s / 60));
-  const fmtDur = (s) => { const m = fmtMin(s); return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`; };
-  const legs = (plan, date) => P().legs(costTable(), plan.start, dayStops(plan, date), plan.end);
+  const fmtKm = (m) => { if (!Number.isFinite(m)) return "?"; const k = m / 1000; return k < 10 ? k.toFixed(1) : String(Math.round(k)); };
+  const fmtMin = (s) => Number.isFinite(s) ? Math.max(1, Math.round(s / 60)) : "?";
+  const fmtDur = (s) => { if (!Number.isFinite(s)) return "unknown"; const m = fmtMin(s); return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`; };
+  const legs = (plan, date) => {
+    const list = dayStops(plan, date), road = App.routePlanner?.cached([plan.start, ...list, plan.end].filter(Boolean));
+    return road ? { ...road, rows: list.map((stop, i) => ({ stop, ...road.legs[i] })), back: road.legs[list.length] } : P().legs(costTable(), plan.start, list, plan.end);
+  };
+  const planningInfo = (plan, date) => `<p class="hint">${esc(App.routePlanner?.note(plan.start, dayStops(plan, date), plan.end) || "Road turns not checked.")}</p>`;
 
   /* ---------------- Today's Route card (decision 11) ---------------- */
   const srcChips = (s) => [
@@ -407,7 +436,7 @@
           <button class="btn btn-primary" data-action="startStop" data-id="${esc(nx.stop.id)}" ${out ? "disabled" : ""}>Start Delivery</button></div>`
         : `<p class="muted" style="margin:0 0 4px">All of today's stops are delivered.</p>`}
       <div class="grid2" style="margin-top:10px"><button class="btn btn-sm btn-outline" data-action="openRouteToday">${icon("list", 16)} Today's list</button>
-        <button class="btn btn-sm btn-danger-outline" data-action="deleteRoute" ${nx ? "" : "disabled"}>${icon("trash", 16)} Delete Route</button></div>
+        <button class="btn btn-sm btn-danger-outline" data-action="openDelete" data-owner="me" data-date="${day}" ${nx ? "" : "disabled"}>${icon("trash", 16)} Delete Route</button></div>
     </section>`;
   }
 
@@ -419,21 +448,21 @@
   function routeSum(plan, d) {
     const list = dayStops(plan, d), L = legs(plan, d);
     const done = list.filter((s) => s.status === "done").length;
-    return `<div class="route-sum"><div class="num"><b>${list.length} stop${list.length === 1 ? "" : "s"}</b> · ${done} done<div class="small muted">${fmtKm(L.m)} km · ${fmtDur(L.s)} driving</div></div>
+    return `<div class="route-sum"><div class="num"><b>${list.length} stop${list.length === 1 ? "" : "s"}</b> · ${done} done<div class="small muted">${L.estimated ? "Estimated · " : ""}${L.unreachable ? "Road connection unavailable" : `${fmtKm(L.m)} km · ${fmtDur(L.s)} driving`}</div></div>
       <span class="segmented" role="group" aria-label="List or map">
         <button class="${R().mode === "list" ? "on" : ""}" data-action="routeMode" data-mode="list">List</button>
-        <button class="${R().mode === "map" ? "on" : ""}" data-action="routeMode" data-mode="map">Map</button></span></div>`;
+        <button class="${R().mode === "map" ? "on" : ""}" data-action="routeMode" data-mode="map">Map</button></span></div>${planningInfo(plan, d)}`;
   }
   function stopList(plan, date, owner) {
     const L = legs(plan, date);
     if (!L.rows.length) return `<div class="empty">No stops on this day.</div>`;
-    const editing = R().editOrder === owner;
+    const editing = R().editOrder === owner, drag = dragOn(owner, date);
     const pend = L.rows.filter((r) => r.stop.status === "pending").map((r) => r.stop);
     const first = date === today() ? pend[0] : null;
-    return `<div class="stops" style="--dc:${dayColor(plan, date)}">${L.rows.map(({ stop: s, m, s: secs }, i) => {
+    return `<div class="stops" style="--dc:${dayColor(plan, date)}" ${drag ? dropAttrs(owner, date) : ""}>${L.rows.map(({ stop: s, m, s: secs }, i) => {
       const pi = pend.indexOf(s);
       const status = s.status === "done" ? `<span class="chip ok">${icon("check", 12)} Delivered ${esc(s.doneAt || "")}</span>` : "";
-      return `<div class="leg">${i === 0 ? `From ${esc(plan.start?.name || "start")} · ` : ""}${fmtKm(m)} km · ${fmtMin(secs)} min</div>
+      return `<div class="stop-item" ${drag && s.status === "pending" ? dragAttrs(owner, s) : ""}><div class="leg">${i === 0 ? `From ${esc(plan.start?.name || "start")} · ` : ""}${fmtKm(m)} km · ${fmtMin(secs)} min</div>
         <div class="stop-row">
           <button class="stop ${s.status} ${s === first ? "next" : ""}" data-action="stopTap" data-id="${esc(s.id)}" data-owner="${esc(owner)}">
             <span class="num-badge">${s.status === "done" ? icon("check", 16) : i + 1}</span>
@@ -443,7 +472,7 @@
           ${editing && s.status === "pending" ? `<div class="ordbtns">
             <button data-action="moveUp" data-id="${esc(s.id)}" data-owner="${esc(owner)}" aria-label="Move up" ${pi === 0 ? "disabled" : ""}>${icon("up", 16)}</button>
             <button data-action="moveDown" data-id="${esc(s.id)}" data-owner="${esc(owner)}" aria-label="Move down" ${pi === pend.length - 1 ? "disabled" : ""}>${icon("down", 16)}</button></div>` : ""}
-        </div>`;
+        </div></div>`;
     }).join("")}<div class="leg">${fmtKm(L.back.m)} km · ${fmtMin(L.back.s)} min back to ${esc(plan.end?.name || "the finish")}</div></div>`;
   }
 
@@ -478,9 +507,10 @@
         <button class="btn btn-outline" data-action="startUpload">${icon("upload", 18)} Upload List</button>
         <button class="btn btn-outline" data-action="replan" data-owner="me">${icon("update", 18)} Re-plan</button>
         ${canChangeDay(plan, d) ? changeDayBtn(d, "me") : ""}
-        ${d === day && pendingOn(plan, d).length > 1 ? `<button class="btn ${editing ? "btn-primary" : "btn-outline"}" data-action="editOrder" data-owner="me">${editing ? "Save order" : "Change order"}</button>` : ""}
+        ${d >= day && pendingOn(plan, d).length > 1 ? `<button class="btn ${editing ? "btn-primary" : "btn-outline"}" data-action="editOrder" data-owner="me">${editing ? "Save order" : "Change order"}</button>` : ""}
+        ${deleteBtn(plan, d, "me")}
       </div>
-      <p class="hint" style="text-align:center;margin-top:12px">Driving times only. Time at each customer is not counted, so there are no arrival times.</p>`;
+      <p class="hint" style="text-align:center;margin-top:12px">${r.mode === "list" && d >= day ? "Hold a stop and slide it up or down to change the order. " : ""}Driving times only. Time at each customer is not counted, so there are no arrival times.</p>`;
   }
 
   /* ---------------- stop actions ---------------- */
@@ -488,12 +518,13 @@
   const planFor = (owner) => (owner === "me" ? R().plan : owner === "next" ? R().next : owner === "draft" ? R().draft : R().team[owner] || null);
   const findStop = (owner, id) => planFor(owner)?.stops.find((x) => x.id === id) || null;
   const canEditOthers = () => ["supervisor", "admin"].includes(S().role);
+  const mayEdit = (owner) => owner === "draft" || owner === "next" || (owner === "me" ? App.canRecord() : canEditOthers());
 
   function openStop(d) {
     const owner = d.owner, plan = planFor(owner), s = findStop(owner, d.id);
     if (!s) return;
     const own = owner === "me", draft = owner === "draft" || owner === "next";
-    const editable = draft || (own ? App.canRecord() : canEditOthers());
+    const editable = mayEdit(owner);
     const pend = s.status === "pending";
     const c = s.acc ? findCustomer(s.acc) : null;
     const b = [];
@@ -509,10 +540,14 @@
     if (c && App.canAddCustomer() && !draft) b.push(`<button class="btn btn-sm btn-outline block" data-action="fixPos" data-id="${esc(c.id)}">${icon("pin", 16)} Wrong position? Fix it</button>`);
     const when = s.status === "done" ? `<span class="chip ok">${icon("check", 12)} Delivered ${esc(s.doneAt || "")}</span>` : `<span class="chip">${s.date === today() ? "Today" : dayLabel(s.date)}</span>`;
     const whose = own ? "" : draft ? " · New plan" : ` · ${esc(App.routeTeam.nameOf(owner))}'s route`;
+    const list = dayStops(plan, s.date), road = App.routePlanner?.cached([plan.start, ...list, plan.end].filter(Boolean));
+    const approach = road?.approaches?.[list.indexOf(s)];
+    const heading = Number.isFinite(approach?.bearing) ? ["north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"][Math.round(approach.bearing / 45) % 8] : null;
     App.openSheet({
       title: esc(s.name),
       body: `<div class="kmbox" style="margin-bottom:12px"><b>${esc([s.addr, s.city].filter(Boolean).join(", "))}</b><div class="small muted">${s.acc ? `Acc ${esc(s.acc)}` : "Not in Customers"}${whose}</div><div class="rec-chips">${when}${srcChips(s)}</div></div>
         ${s.visits?.length ? s.visits.map((v) => `<p class="hint">Visited ${esc(v.t)} · nothing delivered${v.note ? `: ${esc(v.note)}` : ""}</p>`).join("") : ""}
+        ${heading ? `<p class="hint">Planned road approach: travel ${heading}. ${approach.confirmed ? "Entrance confirmed." : "Entrance not confirmed; check access on arrival."} Google Maps may choose a different road.</p>` : ""}
         <div class="stack">${b.join("") || `<p class="muted small" style="margin:0">View only.</p>`}</div>`,
     });
   }
@@ -552,12 +587,19 @@
       data: { id: s.id, owner },
     });
   }
-  function insertCheapest(plan, s) {
+  function insertCheapest(plan, s, pos) {
     const list = dayStops(plan, s.date).filter((x) => x !== s);
     const done = list.filter((x) => x.status === "done"), pend = list.filter((x) => x.status !== "done");
-    const from = done.length ? done[done.length - 1] : plan.start;
+    const from = pos || (done.length ? done[done.length - 1] : plan.start);
     pend.splice(s.lat == null ? pend.length : P().cheapestIndex(costTable(), from, pend, plan.end, s), 0, s);
     assign(s.date, done.concat(pend));
+  }
+  // A new stop on its day without changing the other stops' order (decision 61): first of the
+  // undelivered stops for "Deliver next", otherwise where it adds the least driving.
+  function placeStop(plan, s, pos) {
+    if (!s.next) return insertCheapest(plan, s, pos);
+    const list = dayStops(plan, s.date).filter((x) => x !== s);
+    assign(s.date, list.filter((x) => x.status === "done").concat([s], list.filter((x) => x.status !== "done")));
   }
   async function doMoveDay(d) {
     const { id, owner } = S().sheet.data;
@@ -609,7 +651,7 @@
     put(from, coming);
     if (!whole) {
       await ensureCosts([plan.start, plan.end, ...dayStops(plan, from), ...dayStops(plan, to)]); // estimates without a connection
-      for (const x of [from, to]) if (pendingOn(plan, x).length) reorderToday(plan, x, curPos(plan, x));
+      for (const x of [from, to]) if (pendingOn(plan, x).length) await reorderToday(plan, x, curPos(plan, x));
     }
     if (!dayStops(plan, from).length) plan.dates = plan.dates.filter((x) => x !== from);
     const detail = `${weekday(from)}'s route is now on ${dayLabel(to)}.${coming.length ? ` ${weekday(to)}'s route is now on ${dayLabel(from)}.` : ""}`;
@@ -633,37 +675,49 @@
     });
   }
 
-  /* ---------------- Delete Route (Today's Route card, owner's request 2026-10-29) ---------------- */
-  // Today's undelivered stops: delete one of them or all; the ones left are re-planned. Delivered stops stay.
-  function openDeleteRoute() {
-    const un = pendingOn(R().plan, today());
-    if (!un.length) return;
+  /* ---------------- Delete stops (decisions 54, 62-63) ---------------- */
+  // Tick undelivered stops of one day, or delete the whole route's undelivered stops (then upload the
+  // list again to plan from new). Delivered stops and deliveries stay; the others keep their order.
+  const deletable = (plan, owner) => (plan?.stops || []).filter((s) => s.status === "pending" && (owner === "next" || s.date >= today()));
+  function deleteBtn(plan, date, owner, cls = "btn btn-danger-outline") {
+    return deletable(plan, owner).length ? `<button class="${cls}" data-action="openDelete" data-date="${date}" data-owner="${esc(owner)}">${icon("trash", 18)} Delete stops</button>` : "";
+  }
+  function openDelete(d) {
+    const owner = d.owner || "me", plan = planFor(owner), date = d.date || today(), all = deletable(plan, owner);
+    if (!all.length) return;
+    const un = date >= today() || owner === "next" ? pendingOn(plan, date) : [], name = date === today() ? "today" : dayLabel(date);
     App.openSheet({
-      title: "Delete Route",
-      body: `<p class="muted" style="margin:0 0 12px">Tap a stop to delete it, or delete all of today's undelivered stops. The stops left are re-planned. Delivered stops stay.</p>
-        <div class="radio-list">${un.map((s) => `<button data-action="deleteStops" data-id="${esc(s.id)}" aria-label="Delete ${esc(s.name)}">
-          <span class="grow"><b>${esc(s.name)}</b><div class="small muted">${esc(s.addr)}</div></span>${icon("trash", 18)}</button>`).join("")}</div>`,
-      footer: `<button class="btn btn-outline" data-action="sheetCancel">Cancel</button><button class="btn btn-bad" data-action="deleteStops" data-id="all">Delete all (${un.length})</button>`,
+      title: "Delete stops",
+      body: `${un.length ? `<p class="muted" style="margin:0 0 8px">Tick the stops to take off ${name}'s route. Delivered stops stay; the others keep their order.</p>
+        <label class="toggle-row"><input type="checkbox" id="delAll"> All ${un.length} undelivered stop${un.length > 1 ? "s" : ""} of ${name}</label>
+        <div class="divider"></div>
+        ${un.map((s) => `<label class="toggle-row"><input type="checkbox" name="delStop" value="${esc(s.id)}"><span><b>${esc(s.name)}</b><span class="small muted" style="display:block;font-weight:400">${esc(s.addr)}</span></span></label>`).join("")}`
+        : `<p class="muted" style="margin:0 0 8px">No undelivered stops on ${name}.</p>`}
+        <div class="divider"></div>
+        <button class="btn btn-danger-outline block" data-action="deleteStops" data-scope="route">${icon("trash", 18)} Delete the whole route (${all.length})</button>
+        <p class="hint">Every undelivered stop of ${owner === "next" ? "next week" : "this week from today on"}. Upload the list again to plan from new.</p>`,
+      footer: `<button class="btn btn-outline" data-action="sheetCancel">Cancel</button>${un.length ? `<button class="btn btn-bad" data-action="deleteStops" data-scope="ticked">Delete ticked</button>` : ""}`,
+      data: { owner, date },
     });
   }
+  App.onChange.delAll = (t) => document.querySelectorAll('#sheet input[name="delStop"]').forEach((x) => { x.checked = t.checked; });
   function deleteStops(d) {
-    const plan = R().plan, day = today(), un = pendingOn(plan, day);
-    const all = d.id === "all", gone = all ? un : un.filter((s) => s.id === d.id);
-    if (!gone.length) return;
+    const { owner, date } = S().sheet.data, plan = planFor(owner), whole = d.scope === "route";
+    const ticked = new Set([...document.querySelectorAll('#sheet input[name="delStop"]:checked')].map((x) => x.value));
+    const gone = whole ? deletable(plan, owner) : pendingOn(plan, date).filter((s) => ticked.has(s.id));
+    if (!gone.length) return App.snackbar("Tick the stops to delete first.");
+    const n = gone.length, word = `${n} stop${n > 1 ? "s" : ""}`, day = date === today() ? "today's" : `${dayLabel(date)}'s`;
     App.showConfirm({
-      title: all ? `Delete all ${gone.length} stops?` : "Delete this stop?", okText: "Delete", danger: true,
-      msg: all ? "All of today's undelivered stops are taken off the route. Delivered stops stay." : `${gone[0].name}, ${gone[0].addr}. It is taken off today's route and the other stops are re-planned.`,
+      title: whole ? "Delete the whole route?" : n > 1 ? `Delete ${word}?` : "Delete this stop?", okText: "Delete", danger: true,
+      msg: whole ? `All ${word} not yet delivered are taken off the route. Delivered stops and deliveries stay.`
+        : `${n > 1 ? `${word} are` : `${gone[0].name}, ${gone[0].addr}, is`} taken off ${day} route. The other stops keep their order.`,
       onOk: async () => {
         App.closeSheet(false);
         gone.forEach((s) => { s.status = "removed"; });
-        const left = pendingOn(plan, day);
-        if (left.length) {
-          await ensureCosts([plan.start, plan.end, ...dayStops(plan, day)]); // estimates without a connection
-          reorderToday(plan, day, curPos(plan, day));
-        } else renumber(plan, day);
-        await commit([plan], all
-          ? { title: "Today's route deleted", detail: `${gone.length} undelivered stop${gone.length > 1 ? "s were" : " was"} taken off today's route.` }
-          : { title: "Stop deleted", detail: `${gone[0].name} was taken off today's route.${left.length ? ` The other ${left.length} stop${left.length > 1 ? "s were" : " was"} re-planned.` : ""}` });
+        for (const x of new Set(gone.map((s) => s.date))) renumber(plan, x);
+        plan.dates = plan.dates.filter((x) => dayStops(plan, x).length);
+        const title = whole ? "Route deleted" : n > 1 ? "Stops deleted" : "Stop deleted";
+        await save(owner, plan, title, whole ? `${word} were taken off the route.` : `${n > 1 ? `${word} were` : `${gone[0].name} was`} taken off ${day} route.`, whole ? "Route deleted" : `${word} deleted`);
       },
     });
   }
@@ -675,38 +729,66 @@
   }
 
   // Re-plan: today's remaining stops from the last delivered one; later days split again, which
-  // undoes Change day, so that is asked first.
+  // undoes the driver's order and day changes, so that is asked first (decision 61).
   function replan(d) {
     const owner = d.owner || "me", plan = planFor(owner);
     if (!plan) return;
     if (navigator.onLine === false) return App.showResult(false, "Re-plan needs a connection", "No internet connection.", "The route on this phone is unchanged. Try again when the connection is back.");
-    if (!plan.stops.some((s) => s.status === "pending" && s.date > today())) return doReplan(owner, plan);
-    confirmReplan(() => doReplan(owner, plan));
+    return confirmReplan(() => doReplan(owner, plan));
   }
-  const confirmReplan = (onOk) => App.showConfirm({ title: "Re-plan the route?", okText: "Re-plan", msg: "Later days are split again, which replaces any day changes.", onOk });
+  const confirmReplan = (onOk) => App.showConfirm({ title: "Re-plan the route?", okText: "Re-plan", msg: "The system plans the order and the days again. Order and day changes you made are replaced.", onOk });
   async function doReplan(owner, plan) {
+    const original = plan, snapshot = JSON.stringify(plan);
+    plan = JSON.parse(snapshot);
+    planning.begin();
+    try {
     const day = today(), later = plan.dates.filter((x) => x > day), hasToday = plan.dates.includes(day);
     const laterStops = plan.stops.filter((s) => s.status === "pending" && s.date > day);
     await ensureCosts([plan.start, plan.end, ...activeStops(plan)]);
-    if (hasToday) reorderToday(plan, day, curPos(plan, day));
+    if (hasToday) await reorderToday(plan, day, curPos(plan, day), true);
     if (later.length && laterStops.length) await planDates(plan, later, laterStops);
     plan.stops.forEach((s) => { s.waitReplan = false; });
-    const detail = `${hasToday ? "Today's remaining stops now start from the last delivered stop." : ""}${later.length ? " Later days were re-planned." : ""}`.trim();
-    await save(owner, plan, "Route re-planned", detail, "Route re-planned");
+    const detail = `${hasToday ? "Today's remaining stops now start from the last delivered stop." : ""}${later.length ? " Later days were re-planned." : ""}${planning.estimated() ? ` ${ESTIMATED}` : ""}`.trim();
+    if (JSON.stringify(original) !== snapshot || planFor(owner) !== original) throw new Error("The route changed while planning. Please try again.");
+    Object.assign(original, plan);
+    await save(owner, original, "Route re-planned", detail, "Route re-planned");
+    } catch (error) { App.showResult(false, "Route not re-planned", reason(error), "Your saved route is unchanged."); }
   }
   // Undelivered stops ordered from a position; "Deliver next" stops go first (decision 18).
-  function reorderToday(plan, date, pos) {
+  async function reorderToday(plan, date, pos, full = false) {
     const list = dayStops(plan, date);
     const done = list.filter((s) => s.status === "done"), pend = list.filter((s) => s.status === "pending");
     const first = pend.filter((s) => s.next);
-    const rest = P().orderDay(costTable(), first.length ? first[first.length - 1] : pos, pend.filter((s) => !s.next), plan.end, curbOf);
+    const from = first.length ? first[first.length - 1] : pos, pending = pend.filter((s) => !s.next);
+    let rest;
+    if (full && pending.length) rest = (await plannedGroups(from, plan.end, pending, 1))[0];
+    else rest = (await splitInBackground(from, plan.end, pending, 1))[0];
     assign(date, done.concat(first, rest));
   }
   // Stops split over days (3.3), after any stops already delivered on those days.
   async function planDates(plan, dates, stops) {
+    const groups = await plannedGroups(plan.start, plan.end, stops, dates.length);
     dates.forEach((d) => ensureDate(plan, d));
-    const groups = await splitInBackground(plan.start, plan.end, stops, dates.length);
     dates.forEach((d, i) => assign(d, groups[i], plan.stops.filter((s) => s.date === d && s.status === "done").length + 1));
+  }
+  let estimatedRun = false;
+  const planning = { begin: () => { estimatedRun = false; }, estimated: () => estimatedRun };
+  const ESTIMATED = "Driving times are estimates because the map service is not answering. Re-plan when it is back for the shortest order.";
+  async function plannedGroups(start, end, stops, days) {
+    const urban = stops.every((s) => P().routeOf(s.rte) !== "Z01");
+    let road = null;
+    if (urban && stops.length && App.routePlanner) {
+      const note = setTimeout(() => planningNote(true, true), 200);
+      try { road = await App.routePlanner.plan(start, end, stops, days, curbOf); }
+      finally { clearTimeout(note); planningNote(false); }
+    }
+    if (road) return road;
+    // Without the map service the plan uses estimated driving times (straight-line distance), as the
+    // first Route did; the screens mark them Estimated and the driver is told to Re-plan later.
+    if (!await ensureCosts([start, end, ...stops])) estimatedRun = true;
+    const groups = await splitInBackground(start, end, stops, days);
+    if (groups.some((g) => P().legs(costTable(), start, g, end).unreachable)) throw new Error("Some stops cannot be connected by road. Check their positions before planning.");
+    return groups;
   }
 
   /* ---------------- planning off the screen's thread (owner's choice 2026-10-28) ---------------- */
@@ -717,11 +799,12 @@
   let worker = null, jobs = 0;
   function inWorker(msg) {
     return new Promise((resolve, reject) => {
-      try { worker ||= new Worker("js/route_worker.js?v=1"); } catch (error) { return reject(error); }
+      try { worker ||= new Worker("js/route_worker.js?v=4"); } catch (error) { return reject(error); }
       const id = ++jobs, w = worker;
-      const stop = () => { w.removeEventListener("message", got); w.removeEventListener("error", failed); };
+      const stop = () => { clearTimeout(timer); w.removeEventListener("message", got); w.removeEventListener("error", failed); };
       const got = (e) => { if (e.data?.id !== id) return; stop(); if (e.data.error) reject(new Error(e.data.error)); else resolve(e.data.groups); };
       const failed = (e) => { stop(); worker = null; e.preventDefault?.(); reject(new Error(e.message || "Planning worker failed")); };
+      const timer = setTimeout(() => { stop(); w.terminate(); worker = null; reject(new Error("Planning worker timed out")); }, PLAN_LIMIT_MS + 1500);
       w.addEventListener("message", got);
       w.addEventListener("error", failed);
       w.postMessage({ id, ...msg });
@@ -734,21 +817,21 @@
       for (const a of pts) for (const b of pts) if (`${a}>${b}` in known) sub[`${a}>${b}`] = known[`${a}>${b}`];
       const at = (p) => (p ? { lat: p.lat ?? null, lng: p.lng ?? null } : null);
       try {
-        const groups = await inWorker({ start: at(start), end: at(end), stops: stops.map((s) => ({ addr: s.addr, ...at(s) })), days, curbs: stops.map(curbOf), known: sub, limit: PLAN_LIMIT_MS });
+        const groups = await inWorker({ start: at(start), end: at(end), stops: stops.map((s) => ({ addr: s.addr, city: s.city, prov: s.prov, ...at(s) })), days, regional: stops.every((s) => P().routeOf(s.rte) !== "Z01"), curbs: stops.map(curbOf), known: sub, limit: PLAN_LIMIT_MS });
         return groups.map((g) => g.map((i) => stops[i]));
       } catch (error) {
         console.warn("Planning on the screen's thread:", error.message);
-        return P().splitDays(costTable(), start, end, stops, days, { curbOf, until: Date.now() + PLAN_LIMIT_MS });
+        return (stops.every((s) => P().routeOf(s.rte) !== "Z01") ? P().splitRegions : P().splitDays)(costTable(), start, end, stops, days, { curbOf, until: Date.now() + 100 });
       }
     } finally {
       clearTimeout(note);
       planningNote(false);
     }
   }
-  function planningNote(on) {
+  function planningNote(on, cancellable = false) {
     const el = document.getElementById("planBusy");
     if (!on) return el?.remove();
-    if (!el) document.body.insertAdjacentHTML("beforeend", `<div class="plan-busy" id="planBusy" role="status" aria-live="polite"><div><span class="spin" aria-hidden="true"></span>Planning your route…</div></div>`);
+    if (!el) document.body.insertAdjacentHTML("beforeend", `<div class="plan-busy" id="planBusy" role="status" aria-live="polite"><div><span class="spin" aria-hidden="true"></span>Planning your route…${cancellable ? '<button class="btn btn-sm btn-outline" data-action="cancelPlanning">Cancel</button>' : ""}</div></div>`);
   }
 
   // Change order: up and down buttons, then Save order.
@@ -772,7 +855,94 @@
     App.render();
   }
 
-  /* ---------------- Emergency Call (3.5, decisions 7, 17, 18, 26) ---------------- */
+  /* ---------------- drag to reorder (ROUTE_ORDER_PROPOSAL.md, decisions 59-61) ---------------- */
+  // Hold an undelivered stop, then slide it up or down, or into another day's card (Your route,
+  // Next week). Saved on release, except while Change order is on: Save order saves then.
+  const HOLD_MS = 450, SLOP = 8;
+  let drag = null, swallow = false;
+  const dragOn = (owner, date) => date >= today() && mayEdit(owner);
+  const dropAttrs = (owner, date) => `data-drop="${date}" data-drop-owner="${esc(owner)}"`;
+  const dragAttrs = (owner, s) => `data-drag="${esc(s.id)}" data-drag-owner="${esc(owner)}"`;
+  const mid = (el) => { const r = el.getBoundingClientRect(); return r.top + r.height / 2; };
+  function lift() {
+    if (!drag.el.isConnected) return dragStop();
+    drag.on = true;
+    drag.el.classList.add("lifted");
+    drag.lists = [...$("#content").querySelectorAll("[data-drop]")].filter((b) => b.dataset.dropOwner === drag.owner);
+    drag.scroll = setInterval(autoScroll, 16);
+  }
+  function dragStop() {
+    if (!drag) return;
+    clearTimeout(drag.timer); clearInterval(drag.scroll);
+    drag.el.classList.remove("lifted");
+    drag = null;
+  }
+  // The stop goes before the first undelivered stop below the finger, in the day under the finger.
+  function place() {
+    const { el, y } = drag;
+    const gap = (b) => { const r = b.getBoundingClientRect(); return y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0; };
+    const box = drag.lists.reduce((a, b) => (gap(b) < gap(a) ? b : a), drag.lists[0]);
+    if (!box) return;
+    const items = [...box.children].filter((x) => x !== el && x.matches(".stop-item, .mini-stop"));
+    const below = items.find((x) => x.dataset.drag && mid(x) > y);
+    if (below) { if (below.previousElementSibling !== el) below.before(el); }
+    else if (items.length) { if (items[items.length - 1].nextElementSibling !== el) items[items.length - 1].after(el); }
+    else box.prepend(el);
+  }
+  function autoScroll() {
+    const box = $("#content"), sc = box.scrollHeight > box.clientHeight ? box : document.scrollingElement;
+    const r = sc === box ? box.getBoundingClientRect() : { top: 0, bottom: innerHeight };
+    const dy = drag.y < r.top + 56 ? -12 : drag.y > r.bottom - 56 ? 12 : 0;
+    if (dy) { sc.scrollTop += dy; place(); }
+  }
+  async function drop(d) {
+    const box = d.el.closest("[data-drop]");
+    const owner = d.owner, plan = planFor(owner), s = findStop(owner, d.id), from = s?.date, date = box?.dataset.drop;
+    if (!box || !s || s.status !== "pending") return App.render();
+    const order = [...box.querySelectorAll("[data-drag]")].map((x) => findStop(owner, x.dataset.drag)).filter(Boolean);
+    const was = pendingOn(plan, date);
+    if (date === from && order.length === was.length && order.every((x, i) => x === was[i])) return App.render();
+    ensureDate(plan, date);
+    s.date = date;
+    const pend = order.concat(pendingOn(plan, date).filter((x) => !order.includes(x)));
+    pend.forEach((x) => { x.next = false; }); // the driver's order is the order now
+    assign(date, dayStops(plan, date).filter((x) => x.status === "done").concat(pend));
+    if (date !== from) renumber(plan, from);
+    const same = date === from, msg = same ? "Order saved." : `Moved to ${dayLabel(date)}.`;
+    App.render();
+    if (owner === "draft") { App.snackbar(msg); ensureCosts([plan.start, plan.end, ...dayStops(plan, date)]).then(() => App.render()); return; }
+    if (R().editOrder === owner) return;
+    await ensureCosts([plan.start, plan.end, ...dayStops(plan, date)]); // kilometres of the new order; estimates offline
+    if (owner === "me" || owner === "next") { App.snackbar(msg); return commit([plan]); }
+    save(owner, plan, same ? "Order saved" : "Stop moved", same ? "The new stop order is saved." : `${s.name} moved to ${dayLabel(date)}.`, same ? "Stop order changed" : `${s.name} moved to ${dayLabel(date)}`);
+  }
+  document.addEventListener("pointerdown", (e) => {
+    swallow = false;
+    const el = e.button === 0 && !e.target.closest(".ordbtns") && e.target.closest("[data-drag]");
+    if (!el || !App.S) return;
+    dragStop();
+    drag = { el, id: el.dataset.drag, owner: el.dataset.dragOwner, x: e.clientX, y: e.clientY, on: false, timer: setTimeout(lift, HOLD_MS) };
+  });
+  document.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    if (!drag.on) { if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > SLOP) dragStop(); return; } // a scroll, not a hold
+    drag.y = e.clientY;
+    place();
+  });
+  document.addEventListener("pointerup", () => {
+    const d = drag;
+    dragStop();
+    if (!d?.on) return;
+    swallow = true; // the click that follows letting go
+    if (d.el.isConnected) drop(d); else App.render();
+  });
+  document.addEventListener("pointercancel", () => { const d = drag; dragStop(); if (d?.on) App.render(); });
+  // While a stop is held the list must not scroll, and letting go must not open the stop.
+  document.addEventListener("touchmove", (e) => { if (drag?.on) e.preventDefault(); }, { passive: false });
+  document.addEventListener("contextmenu", (e) => { if (drag) e.preventDefault(); });
+  document.addEventListener("click", (e) => { if (swallow) { swallow = false; e.stopPropagation(); e.preventDefault(); } }, true);
+
+  /* ---------------- Emergency Call (3.5, decisions 7, 17, 18, 26, 61) ---------------- */
   function openEmergency(owner = "me") {
     const own = owner === "me";
     App.openSheet({
@@ -832,12 +1002,12 @@
     App.sheetBusy(true);
     const c = acc ? findCustomer(acc) : null;
     const fail = (msg) => { App.sheetBusy(false); App.sheetErr(msg); };
-    let pos = null, stopPos = null, online = navigator.onLine !== false;
+    let pos = null, stopPos = null, online = navigator.onLine !== false, mapDown = false;
     if (own) {
       pos = here ? null : await phonePosition();
       if (!pos && here) {
         if (!online) return fail("Without a connection, use the phone's location.");
-        try { pos = await geocodeText(here); } catch (error) { return fail(reason(error)); }
+        try { pos = await geocodeText(here); } catch (error) { return fail(error.down ? "The map service is not answering, so a typed location cannot be looked up now. Turn on the phone's location." : reason(error)); }
         if (!pos) return fail(`“${here}” was not found. Check it, or turn on the phone's location.`);
         pos.name = here;
       }
@@ -850,17 +1020,20 @@
       if (fresh?.lat != null) stopPos = { lat: fresh.lat, lng: fresh.lng };
     }
     if (!stopPos && online) {
-      try { stopPos = await geocodeText([P().stripUnit(addr), city, "Canada"].filter(Boolean).join(", ")); } catch (error) { return fail(reason(error)); }
-      if (!stopPos) return fail(`“${addr}” was not found on the map. Check the address and city.`);
+      try { stopPos = await geocodeText([P().stripUnit(addr), city, "Canada"].filter(Boolean).join(", ")); } catch (error) {
+        if (!error.down) return fail(reason(error));
+        mapDown = true; // added without a position now, put in its place when the service answers
+      }
+      if (!stopPos && !mapDown) return fail(`“${addr}” was not found on the map. Check the address and city.`);
     }
     const data = { acc: c ? c.accountNumber : acc, name: name || (c ? c.accountName : "Emergency delivery"), addr, city: city || c?.city || "", lat: stopPos?.lat ?? null, lng: stopPos?.lng ?? null };
     App.sheetBusy(false);
     App.closeSheet(false);
-    if (own) return emergencyOwn(data, next, pos, online);
+    if (own) return emergencyOwn(data, next, pos, online, mapDown);
     return App.routeTeam.emergencyOther(owner, data, next);
   }
 
-  async function emergencyOwn(data, next, pos, online) {
+  async function emergencyOwn(data, next, pos, online, mapDown = false) {
     const r = R(), day = today();
     let created = false;
     if (!r.plan) {
@@ -876,9 +1049,17 @@
     r.day = day;
     if (online && data.lat != null) {
       await ensureCosts([pos, plan.start, plan.end, ...dayStops(plan, day)]); // estimates when the service is busy
-      reorderToday(plan, day, pos);
+      placeStop(plan, s, pos);
       const n = dayStops(plan, day).indexOf(s) + 1;
-      return commit([plan], { title: "Emergency stop added", detail: `${s.name} is stop ${n} of today's route${next ? " (deliver next)" : ""}. ${created ? "A route for today was created." : "The rest of today's stops were re-planned from your location."}` });
+      return commit([plan], { title: "Emergency stop added", detail: `${s.name} is stop ${n} of today's route${next ? " (deliver next)" : ""}. ${created ? "A route for today was created." : "The other stops keep their order."}` });
+    }
+    // The map service did not answer for the address: the stop is added now without a position (first
+    // for Deliver next, else last) and put in its place once the service answers (replanWaiting).
+    if (online && mapDown) {
+      s.waitReplan = true;
+      placeStop(plan, s, pos);
+      const n = dayStops(plan, day).indexOf(s) + 1;
+      return commit([plan], { title: "Emergency stop added", detail: `${s.name} is stop ${n} of today's route. The map service is not answering, so its address has no position yet; the stop is moved to where it adds the least driving when the service answers again.` });
     }
     // No connection: at the end of today's stops for now, ordered when the connection is back.
     s.waitReplan = true;
@@ -886,20 +1067,26 @@
     persist();
     App.outbox.add("route.save", { saves: [{ plan: planRow(plan), stops: plan.stops.map(stopRow), base_version: plan.version || null, notice: null }] });
     App.render();
-    App.showResult(false, "Saved on this phone", "No internet connection.", "The stop was added at the end of today's route. The order is re-planned automatically when the connection is back.");
+    App.showResult(false, "Saved on this phone", "No internet connection.", "The stop was added at the end of today's route. It is moved to where it adds the least driving when the connection is back.");
   }
   // Back online: stops added without a connection get their place.
+  // Also after an emergency stop was added while the map service was not answering (tried again at
+  // start-up, when the connection comes back and when the Route tab is opened).
+  let waiting = false;
   async function replanWaiting() {
     const plan = R().plan, day = today();
-    if (!plan || !plan.stops.some((s) => s.waitReplan && s.status === "pending") || navigator.onLine === false) return;
-    for (const s of plan.stops.filter((x) => x.waitReplan && x.lat == null)) {
-      try { const p = await geocodeText([P().stripUnit(s.addr), s.city, "Canada"].filter(Boolean).join(", ")); if (p) Object.assign(s, { lat: p.lat, lng: p.lng }); } catch { return; }
-    }
-    await ensureCosts([plan.start, plan.end, ...dayStops(plan, day)]);
-    reorderToday(plan, day, curPos(plan, day));
-    plan.stops.forEach((s) => { s.waitReplan = false; });
-    await commit([plan]);
-    App.snackbar("Today's route was re-planned with the emergency stop.");
+    if (waiting || !plan || !plan.stops.some((s) => s.waitReplan && s.status === "pending") || navigator.onLine === false) return;
+    waiting = true;
+    try {
+      for (const s of plan.stops.filter((x) => x.waitReplan && x.lat == null)) {
+        try { const p = await geocodeText([P().stripUnit(s.addr), s.city, "Canada"].filter(Boolean).join(", ")); if (p) Object.assign(s, { lat: p.lat, lng: p.lng }); } catch { return; }
+      }
+      await ensureCosts([plan.start, plan.end, ...dayStops(plan, day)]);
+      for (const s of plan.stops.filter((x) => x.waitReplan && x.status === "pending" && x.date === day)) placeStop(plan, s, curPos(plan, day));
+      plan.stops.forEach((s) => { s.waitReplan = false; });
+      await commit([plan]);
+      App.snackbar("The emergency stop was put in today's route.");
+    } finally { waiting = false; }
   }
   window.addEventListener("online", () => { if (App.S && App.canRecord()) setTimeout(replanWaiting, 1500); });
 
@@ -948,20 +1135,26 @@
   }
   async function savePosHere(d) {
     App.sheetBusy(true);
+    let synced = true;
     const pos = await phonePosition();
     if (!pos) { App.sheetBusy(false); return App.sheetErr("The phone's location is off or not available."); }
     try {
       const { data } = await App.data.call(sb().rpc("tdg_customer_set_position", { p_customer_id: d.id, p_lat: pos.lat, p_lng: pos.lng }));
       const c = App.data.cachedCustomers().find((x) => x.id === d.id);
-      if (c) App.data.putCustomer({ ...c, lat: data.lat, lng: data.lng, geoSource: "manual" }, S().loc?.prov || "");
-      for (const p of [R().plan, R().next]) for (const s of p?.stops || []) if (s.status === "pending" && P().normAcc(s.acc) === P().normAcc(c?.accountNumber)) Object.assign(s, { lat: data.lat, lng: data.lng });
-      persist();
+      if (c) App.data.putCustomer({ ...c, lat: data.lat, lng: data.lng, geoSource: "manual", curb: null, curbFor: "" }, S().loc?.prov || "");
+      const changed = [];
+      for (const p of [R().plan, R().next]) {
+        const matches = (p?.stops || []).filter((s) => s.status === "pending" && c && P().normAcc(s.acc) === P().normAcc(c.accountNumber) && P().sameAddress(s.addr, c.accountAddress));
+        matches.forEach((s) => Object.assign(s, { lat: data.lat, lng: data.lng }));
+        if (matches.length) changed.push(p);
+      }
+      if (changed.length) synced = await commit(changed); else persist();
     } catch (error) {
       App.sheetBusy(false);
       return App.sheetErr(`Not saved: ${reason(error)}`);
     }
     App.closeSheet(false);
-    App.showResult(true, "Position saved", "Saved to Supabase.", "Every driver now uses this position. Your name and the time are logged.");
+    App.showResult(true, "Position saved", "Customer position saved to Supabase.", synced ? "Your pending stops use this position. Re-plan to update the roads. Your name and the time are logged." : "The route update was not confirmed. Check the route and upload status before re-planning.");
     App.render();
   }
 
@@ -975,6 +1168,7 @@
 
   App.SCREENS.route = renderRoute;
   Object.assign(App.ACTIONS, {
+    cancelPlanning: () => App.routePlanner?.cancel(),
     routeTab: (d) => { R().tab = d.tab; R().editOrder = null; if (d.tab === "team") App.routeTeam.load(); App.render(); },
     routeDay: (d) => { if (d.owner === "me") R().day = d.date; else R().teamDay = d.date; R().editOrder = null; App.render(); },
     routeMode: (d) => { R().mode = d.mode; App.render(); },
@@ -987,7 +1181,7 @@
     changeDay: openChangeDay,
     doChangeDay,
     removeStop,
-    deleteRoute: openDeleteRoute,
+    openDelete,
     deleteStops,
     replan,
     editOrder: toggleEditOrder,
@@ -1005,7 +1199,7 @@
     R, today, mondayOf, nextWorkday, isFriday, dayLabel, newPlan, mkStop, planRow, stopRow, fromRows, dayStops, pendingOn, activeStops,
     assign, renumber, ensureDate, dayColor, curPos, costTable, ensureCosts, locateCustomers, geocodeText, findCustomer, routeFn,
     load, refresh, persist, commit, uploaded, afterDelivery, untick, isPendingEmergency, todayCard, offDutyLine, offDuty, planDates,
-    reorderToday, insertCheapest, routeMap, stopList, dayChips, routeSum, legs, fmtKm, fmtDur, srcChips, planFor, canEditOthers, reason, replanWaiting,
+    reorderToday, insertCheapest, placeStop, planning, ESTIMATED, serviceDown, deleteBtn, dragOn, dropAttrs, dragAttrs, routeMap, stopList, dayChips, routeSum, planningInfo, legs, fmtKm, fmtDur, srcChips, planFor, canEditOthers, reason, replanWaiting,
     noticeHtml, canChangeDay, changeDayBtn, confirmReplan,
   };
 })();

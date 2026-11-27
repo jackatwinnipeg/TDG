@@ -72,6 +72,7 @@
         <button class="btn btn-outline" data-action="emergency" data-owner="${esc(id)}">${icon("siren", 18)} Emergency</button>
         <button class="btn btn-outline" data-action="replan" data-owner="${esc(id)}">${icon("update", 18)} Re-plan</button>
         ${RT().pendingOn(p, d).length > 1 ? `<button class="btn ${editing ? "btn-primary" : "btn-outline"}" data-action="editOrder" data-owner="${esc(id)}">${editing ? "Save order" : "Change order"}</button>` : ""}
+        ${RT().deleteBtn(p, d, id)}
       </div>` : ""}`;
   }
 
@@ -102,13 +103,8 @@
     RT().ensureDate(p, day);
     const s = RT().mkStop(data, { src: "emergency", next, date: day, seq: 999 });
     p.stops.push(s);
-    if (next) {
-      const list = RT().dayStops(p, day).filter((x) => x !== s);
-      RT().assign(day, list.filter((x) => x.status === "done").concat([s], list.filter((x) => x.status !== "done")));
-    } else {
-      await RT().ensureCosts([p.start, p.end, ...RT().dayStops(p, day)]);
-      RT().insertCheapest(p, s);
-    }
+    if (!next) await RT().ensureCosts([p.start, p.end, ...RT().dayStops(p, day)]);
+    RT().placeStop(p, s);
     await saveOther([p], "Emergency stop added", `${data.name} added to ${nameOf(owner)}'s route for today${next ? " as the next stop" : ""}.`, `Emergency stop added: ${data.name}`);
   }
 
