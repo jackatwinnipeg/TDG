@@ -82,7 +82,7 @@
     const totalKm = from != null && g?.endKm != null ? fmtN(g.endKm - from) : "—";
     let action = "";
     if (st === "off") action = `<button class="btn btn-ok block lg" data-action="checkin">Check-in</button>`;
-    if (st === "on") action = `<button class="btn btn-outline block lg" data-action="checkout">Check-out</button>`;
+    if (st === "on") action = `<button class="btn btn-bad block lg" data-action="checkout">Check-out</button>`;
     // Resume Work (RESUME_WORK_PROPOSAL.md, app only): reopens the day after a mistaken Check-out or Off-Duty.
     if (st === "out" && !done) action = `<button class="btn btn-primary block lg" data-action="offduty">Off-Duty</button>
       <p class="hint" style="text-align:center">Uploads the final reports and signs you out.</p>

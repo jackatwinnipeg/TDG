@@ -12,6 +12,9 @@
   const sb = () => window.supabaseClient;
   const R = () => RT().R();
   const up = () => R().up;
+  const addressKey = (r) => [P().normAddr(r.addr), String(r.city || "").trim().toLowerCase(), String(r.prov || "").trim().toUpperCase()].join("|");
+  const samePlace = (r, c) => (!r.city || r.city.trim().toLowerCase() === String(c.city || "").trim().toLowerCase()) &&
+    (!r.prov || r.prov.trim().toUpperCase() === String(c.province || "").trim().toUpperCase());
   const FILE_TYPES = ".xlsx,.csv,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/comma-separated-values,application/pdf";
 
   /* ---------------- reading the file ---------------- */
@@ -69,7 +72,7 @@
     const seen = new Set();
     for (const row of rows) {
       const k = P().normAcc(row.pos);
-      const key = k || `addr:${P().normAddr(row.addr)}`;
+      const key = k || `addr:${addressKey(row)}`;
       if (seen.has(key)) { out.same++; continue; } // the same customer twice in the list
       seen.add(key);
       if (row.carry) out.carry++;
@@ -82,25 +85,33 @@
       const route = listRoute || P().routeOf(c.route) || "";
       if (!route) { out.attn.push({ key, type: "noroute", row, c }); continue; }
       if (inPlan.has(k)) { out.dup++; continue; }
-      let addr = c.accountAddress;
-      if (!P().sameAddress(row.addr, c.accountAddress)) {
+      let addr = c.accountAddress, useList = false;
+      if (!P().sameAddress(row.addr, c.accountAddress) || !samePlace(row, c)) {
         const saved = choices[k];
-        if (!saved || saved.list_address !== P().normAddr(row.addr)) { out.attn.push({ key, type: "addr", row, c }); continue; }
+        // A choice remembered by the first Route or the website (the address only) still counts while the
+        // city and province are the customer's.
+        const remembered = saved && (saved.list_address === addressKey(row) || (samePlace(row, c) && saved.list_address === P().legacyNormAddr(row.addr)));
+        if (!remembered) { out.attn.push({ key, type: "addr", row, c }); continue; }
         out.remembered++;
-        if (saved.choice === "list") addr = row.addr;
+        if (saved.choice === "list") { addr = row.addr; useList = true; }
       } else if (row.addr.trim() !== c.accountAddress.trim()) out.fmt++;
-      out[route === "Z01" ? "z01" : "z02"].push({ key, row, c, addr });
+      out[route === "Z01" ? "z01" : "z02"].push({ key, row, c, addr, useList });
     }
     // Positions of the customers to plan: found once and kept on the customer (3.8).
     const need = [...out.z02, ...out.z01];
     if (need.length) {
-      const found = await RT().locateCustomers(need.map((x) => x.c));
+      // One customer the map services cannot answer for no longer stops the whole list (2026-11-25):
+      // it goes to Needs attention, the others are planned with their positions.
+      const { found, unavailable, failed } = await RT().locateCustomers(need.map((x) => x.c));
       for (const x of need) {
         const p = found[x.c.id];
         if (p) Object.assign(x.c, { lat: p.lat, lng: p.lng, geoSource: p.source, curb: p.curb ?? null, curbFor: p.curbFor || "" });
+        else if (unavailable.has(x.c.id)) { Object.assign(x.c, { lat: null, lng: null }); x.down = true; } // no position known now
+        else if (failed.has(x.c.id)) { if (x.c.lat == null) x.down = true; } // the saved position, if any, is used
         else if (p === null) Object.assign(x.c, { lat: null, lng: null }); // not found at its address now
       }
-      need.filter((x) => x.c.lat == null).forEach((x) => out.attn.push({ key: x.key, type: "geo", row: x.row, c: x.c, addr: x.addr }));
+      out.mapDown = need.some((x) => x.down) || failed.size > 0;
+      need.filter((x) => x.c.lat == null).forEach((x) => out.attn.push({ key: x.key, type: "geo", row: x.row, c: x.c, addr: x.addr, down: !!x.down }));
       out.z02 = out.z02.filter((x) => x.c.lat != null);
       out.z01 = out.z01.filter((x) => x.c.lat != null);
     }
@@ -209,7 +220,7 @@
       opts = `${opt("addr", "list", "Use list address")}${opt("addr", "customer", "Use customer address")}${RT().canEditOthers() ? opt("addr", "update", "Update customer") : ""}`;
       done = { list: "Using the list address", customer: "Using the customer address", update: "Customer address will be updated" }[r.addr] || "";
     } else {
-      body = `<div class="small muted">${esc(row.pos)} · “${esc(it.addr || row.addr)}” could not be found on the map.</div>
+      body = `<div class="small muted">${esc(row.pos)} · “${esc(it.addr || row.addr)}” ${it.down ? "could not be looked up: the map service is not answering right now. Plan it without a position, or try again later." : "could not be found on the map."}</div>
         <div class="field" style="margin:8px 0 0"><label class="label" for="geo-${esc(it.key)}">Try the address written another way</label>
           <div class="row"><input class="input grow" id="geo-${esc(it.key)}" placeholder="e.g. 107 Burning Glass Road, Winnipeg" autocomplete="off"><button class="btn btn-sm btn-primary" data-action="geoTry" data-key="${esc(it.key)}">Find</button></div></div>`;
       opts = opt("skip", "1", "Plan without a position");
@@ -284,7 +295,7 @@
     const add = (s) => { const k = s.acc ? P().normAcc(s.acc) : `id:${s.id}`; if (seen.has(k)) return; seen.add(k); out.push(s); };
     if (base && !replacePending) base.stops.filter((s) => s.status === "pending").forEach(add);
     const extra = (row) => ({ product: row.product || "", rte: row.rte || "" });
-    a.z02.concat(a.z01).forEach(({ c, addr, row }) => add(RT().mkStop(c, { addr, ...extra(row), needGeo: addr !== c.accountAddress })));
+    a.z02.concat(a.z01).forEach(({ c, addr, row, useList }) => add(RT().mkStop(c, { addr, ...extra(row), needGeo: !!useList, ...(useList ? { city: row.city || c.city, prov: row.prov || c.province } : {}) })));
     for (const it of a.attn) {
       const r = u.res[it.key] || {};
       if ((it.type === "missing" || it.type === "noroute") && r.route) {
@@ -296,7 +307,7 @@
         const c = it.matches.find((x) => x.id === r.pick);
         add(RT().mkStop(c, { addr: c.accountAddress, ...extra(it.row), needGeo: c.lat == null }));
       }
-      if (it.type === "addr") add(RT().mkStop(it.c, { addr: r.addr === "customer" ? it.c.accountAddress : it.row.addr, ...extra(it.row), needGeo: r.addr !== "customer" }));
+      if (it.type === "addr") add(RT().mkStop(it.c, { addr: r.addr === "customer" ? it.c.accountAddress : it.row.addr, ...extra(it.row), needGeo: r.addr !== "customer", ...(r.addr !== "customer" ? { city: it.row.city || it.c.city, prov: it.row.prov || it.c.province } : {}) }));
       if (it.type === "geo") add(RT().mkStop(r.pos ? { ...it.c, lat: r.pos.lat, lng: r.pos.lng } : it.c, { addr: it.addr || it.c.accountAddress, ...extra(it.row), needGeo: false }));
     }
     return out;
@@ -334,10 +345,12 @@
 
   async function planRoute() {
     const u = up(), dates = [...u.dates].sort();
+    const ownerAtStart = S().session.userId;
     if (!dates.length) return;
     if (navigator.onLine === false) return App.showResult(false, "Planning needs a connection", "No internet connection.", "Your list and answers are kept. Try again when the connection is back.");
     let start, end, typed = false;
     u.planning = true;
+    RT().planning.begin();
     App.render();
     try {
       if (R().defaults && !u.editStart) ({ start, end } = R().defaults);
@@ -355,19 +368,31 @@
       plan.start = start; plan.end = end;
       const fresh = stopsToPlan(plan, replacing());
       // A stop at the list's address (not the customer's) is looked up at that address.
+      // Never at the customer's old position. Not on the map: the driver checks the address first. The
+      // map service not answering: planned without a position (the last stop of a day, No position).
+      const unplaced = [];
       for (const s of fresh.filter((x) => x.needGeo)) {
-        const p = await RT().geocodeText([P().stripUnit(s.addr), s.city, "Canada"].filter(Boolean).join(", ")).catch(() => null);
-        if (p) Object.assign(s, { lat: p.lat, lng: p.lng });
+        s.lat = null; s.lng = null;
+        let p;
+        try { p = await RT().geocodeText([P().stripUnit(s.addr), s.city, s.prov, "Canada"].filter(Boolean).join(", ")); } catch (error) {
+          if (!error.down) throw error;
+          unplaced.push(s.name);
+          continue;
+        }
+        if (!p) throw new Error(`The new address for ${s.name} could not be located. Check it before planning.`);
+        Object.assign(s, { lat: p.lat, lng: p.lng });
       }
+      u.unplaced = unplaced;
       fresh.forEach((s) => { delete s.needGeo; });
       if (replacing()) plan.stops.filter((s) => s.status === "pending").forEach((s) => { s.status = "removed"; });
       const keep = plan.stops.filter((s) => s.status === "done" || (s.status === "removed" && base?.stops.some((b) => b.id === s.id)));
       plan.stops = keep.concat(fresh);
       plan.dates = [...new Set(plan.stops.filter((s) => s.status === "done").map((s) => s.date).concat(dates))].sort();
-      await RT().ensureCosts([start, end, ...fresh]);
       await RT().planDates(plan, dates, fresh);
+      u.estimated = RT().planning.estimated();
       if (u.list) plan.listId = u.list.id;
       else if (u.merge) plan.listId = u.merge.listId;
+      if (up() !== u || S().session.userId !== ownerAtStart) throw new Error("The list changed while planning. Please try again.");
       R().draft = plan;
       R().reviewDay = null;
       R().mode = "map";
@@ -403,30 +428,39 @@
     const all = dates.map((d) => ({ d, L: RT().legs(p, d), list: RT().dayStops(p, d) }));
     const count = all.reduce((t, x) => t + x.list.filter((s) => s.status !== "done").length, 0);
     const sel = dates.includes(R().reviewDay) ? R().reviewDay : null;
+    const u = up(), notes = [u?.estimated ? RT().ESTIMATED : "", u?.unplaced?.length ? `No position for ${u.unplaced.join(", ")}: the address could not be looked up, so ${u.unplaced.length > 1 ? "they are the last stops" : "it is the last stop"} of a day.` : ""].filter(Boolean);
     return `<button class="back" data-action="backToSetup">${icon("back", 20)} Delivery days</button>
       <div class="page-h"><h1>Your route</h1><span class="sub num">${dates.length} day${dates.length > 1 ? "s" : ""} · ${count} stops</span></div>
+      ${notes.map((n) => `<div class="note-box warn" role="status">${icon("alert", 16)} ${esc(n)}</div>`).join("")}
       ${RT().routeMap(p, sel ? [sel] : dates, "draft")}
       <div class="legend" role="group" aria-label="Show on map">
         <button class="chip ${sel ? "" : "on"}" data-action="reviewDay" data-date="">All days</button>
         ${all.map(({ d, list }) => `<button class="chip ${sel === d ? "on" : ""}" style="--dc:${RT().dayColor(p, d)}" data-action="reviewDay" data-date="${d}"><span class="day-dot"></span>${d === from ? "Today" : RT().dayLabel(d)} · ${list.length}</button>`).join("")}</div>
       ${all.map(({ d, L, list }) => `<section class="card plan-day" style="--dc:${RT().dayColor(p, d)}">
         <div class="card-h"><h2><span class="day-dot"></span>${d === from ? "Today" : weekday(d)} <span class="num">${d}</span></h2><span class="muted small num">${list.length} stops · ${RT().fmtKm(L.m)} km · ${RT().fmtDur(L.s)}</span></div>
-        ${list.length ? list.map((s, i) => `<button class="mini-stop ${s.status}" data-action="stopTap" data-id="${esc(s.id)}" data-owner="draft"><span class="num-badge sm">${s.status === "done" ? icon("check", 12) : i + 1}</span><span class="grow ellipsis"><b>${esc(s.name)}</b> <span class="muted">${esc(s.addr)}</span></span>${RT().srcChips(s)}</button>`).join("") : `<p class="muted small" style="margin:0">No stops.</p>`}
+        ${RT().planningInfo(p, d)}
+        <div class="day-stops" ${RT().dropAttrs("draft", d)}>${list.length ? list.map((s, i) => `<button class="mini-stop ${s.status}" data-action="stopTap" data-id="${esc(s.id)}" data-owner="draft" ${s.status === "pending" ? RT().dragAttrs("draft", s) : ""}><span class="num-badge sm">${s.status === "done" ? icon("check", 12) : i + 1}</span><span class="grow ellipsis"><b>${esc(s.name)}</b> <span class="muted">${esc(s.addr)}</span></span>${RT().srcChips(s)}</button>`).join("") : `<p class="muted small" style="margin:0">No stops.</p>`}</div>
         ${RT().canChangeDay(p, d) ? RT().changeDayBtn(d, "draft", "btn btn-sm btn-outline block") : ""}
       </section>`).join("")}
       <button class="btn btn-outline block" data-action="replanDraft">${icon("update", 18)} Re-plan</button>
-      <p class="hint" style="text-align:center">Tap a stop to move it to another day or remove it. Driving times only.</p>`;
+      <p class="hint" style="text-align:center">Hold a stop and slide it to change the order, or into another day. Tap a stop to move it or remove it. Driving times only.</p>`;
   }
 
   const replanDraft = () => RT().confirmReplan(doReplanDraft);
   async function doReplanDraft() {
-    const p = R().draft, u = up();
+    const original = R().draft, snapshot = JSON.stringify(original), p = JSON.parse(snapshot), u = up();
+    RT().planning.begin();
+    try {
     const dates = p.dates.filter((d) => d >= RT().today() && (!u || u.dates.has(d) || p.stops.some((s) => s.date === d && s.status === "pending")));
     const pend = p.stops.filter((s) => s.status === "pending");
     await RT().ensureCosts([p.start, p.end, ...pend]);
     await RT().planDates(p, dates, pend);
+    if (R().draft !== original || JSON.stringify(original) !== snapshot) throw new Error("The route changed while planning. Please try again.");
+    R().draft = p;
+    if (u) u.estimated = RT().planning.estimated();
     App.render();
-    App.snackbar("Re-planned.");
+    App.snackbar(RT().planning.estimated() ? "Re-planned with estimated driving times." : "Re-planned.");
+    } catch (error) { App.showResult(false, "Route not re-planned", RT().reason(error), "Your previous plan is unchanged."); }
   }
 
   async function saveRoute() {
@@ -438,10 +472,11 @@
         const r = u.res[it.key];
         if (it.type !== "addr" || !r) continue;
         if (r.addr === "update") {
-          const { data } = await App.data.call(sb().from("tdg_customers").update({ account_address: it.row.addr }).eq("id", it.c.id).select(App.data.CUST_COLS).single());
+          const { data } = await App.data.call(sb().from("tdg_customers").update({ account_address: it.row.addr, city: it.row.city || it.c.city, province: it.row.prov || it.c.province,
+            lat: null, lng: null, geo_source: "", geo_address: "", curb_bearing: null, curb_for: "" }).eq("id", it.c.id).select(App.data.CUST_COLS).single());
           App.data.putCustomer(App.data.toCustomer(data), S().loc?.prov || "");
         } else {
-          await App.data.call(sb().from("tdg_route_address_choices").upsert({ owner_id: S().session.userId, account_key: P().normAcc(it.c.accountNumber), list_address: P().normAddr(it.row.addr), choice: r.addr, updated_at: new Date().toISOString() }));
+          await App.data.call(sb().from("tdg_route_address_choices").upsert({ owner_id: S().session.userId, account_key: P().normAcc(it.c.accountNumber), list_address: addressKey(it.row), choice: r.addr, updated_at: new Date().toISOString() }));
         }
       }
     } catch (error) {
@@ -580,10 +615,11 @@
       ${RT().routeMap(np, np.dates, "next")}
       ${all.map(({ d, L, list }) => `<section class="card plan-day" style="--dc:${RT().dayColor(np, d)}">
         <div class="card-h"><h2><span class="day-dot"></span>${weekday(d)} <span class="num">${d}</span></h2><span class="muted small num">${list.length} stops · ${RT().fmtKm(L.m)} km · ${RT().fmtDur(L.s)}</span></div>
-        ${list.map((s, i) => `<button class="mini-stop" data-action="stopTap" data-id="${esc(s.id)}" data-owner="next"><span class="num-badge sm">${i + 1}</span><span class="grow ellipsis"><b>${esc(s.name)}</b> <span class="muted">${esc(s.addr)}</span></span></button>`).join("") || `<p class="muted small" style="margin:0">No stops.</p>`}
+        <div class="day-stops" ${RT().dropAttrs("next", d)}>${list.map((s, i) => `<button class="mini-stop" data-action="stopTap" data-id="${esc(s.id)}" data-owner="next" ${s.status === "pending" ? RT().dragAttrs("next", s) : ""}><span class="num-badge sm">${i + 1}</span><span class="grow ellipsis"><b>${esc(s.name)}</b> <span class="muted">${esc(s.addr)}</span></span></button>`).join("") || `<p class="muted small" style="margin:0">No stops.</p>`}</div>
         ${RT().canChangeDay(np, d) ? RT().changeDayBtn(d, "next", "btn btn-sm btn-outline block") : ""}
+        ${RT().deleteBtn(np, d, "next", "btn btn-sm btn-danger-outline block")}
       </section>`).join("")}
-      <p class="hint" style="text-align:center">Tap a stop to move it to another day or remove it.</p>`;
+      <p class="hint" style="text-align:center">Hold a stop and slide it to change the order, or into another day. Tap a stop to move it or remove it.</p>`;
   }
 
   /* ---------------- wiring ---------------- */

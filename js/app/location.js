@@ -56,21 +56,71 @@
   }
 
   // Phone position, at most 10 seconds (3.1 step 1). fresh: not a position remembered from before.
+  // The error says what the driver can do about it (shown in the location sheet).
+  const GEO_ERRORS = {
+    1: () => (App.inApp ? "Location is not allowed for this app. Allow it in the phone's Settings → Apps → Linde TDG Log → Permissions → Location."
+      : "Location is blocked for this site in the browser."),
+    2: () => "The phone could not find its position. Check that Location is on.",
+    3: () => "The phone did not find its position within 10 seconds.",
+  };
   const position = (fresh) => new Promise((resolve, reject) => {
     if (!navigator.geolocation) return reject(new Error("This device has no location."));
-    navigator.geolocation.getCurrentPosition(resolve, (e) => reject(new Error(e.message || "Location not available.")), { enableHighAccuracy: false, timeout: 10000, maximumAge: fresh ? 0 : 5 * 60000 });
+    navigator.geolocation.getCurrentPosition(resolve, (e) => reject(Object.assign(new Error(GEO_ERRORS[e.code]?.() || e.message || "Location not available."), { geo: e.code })),
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: fresh ? 0 : 5 * 60000 });
   });
 
-  async function locateNow(fresh = false) {
-    const pos = await position(fresh);
-    const r = await window.supabaseClient.functions.invoke("tdg-locate", { body: { lat: pos.coords.latitude, lng: pos.coords.longitude } });
-    if (r.error) {
-      let message = r.error.message;
-      try { message = (await r.error.context.json()).error || message; } catch {}
-      throw new Error(message);
+  const km = (a, b) => {
+    const R = Math.PI / 180, dLat = (b.lat - a.lat) * R, dLng = (b.lng - a.lng) * R;
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * R) * Math.cos(b.lat * R) * Math.sin(dLng / 2) ** 2;
+    return 12742 * Math.asin(Math.sqrt(h));
+  };
+  // City and province from tdg-locate. down: the service did not answer (not "outside Canada", not
+  // a sign-in problem), so the nearest customer can stand in.
+  async function lookup(lat, lng) {
+    const r = await window.supabaseClient.functions.invoke("tdg-locate", { body: { lat, lng } });
+    if (!r.error) return { ...fromAccount(r.data.location, "phone"), near: !!r.data.near };
+    let message = r.error.message, status = r.error.context?.status || 0;
+    try { message = (await r.error.context.json()).error || message; } catch {}
+    throw Object.assign(new Error(message), { down: ![401, 403, 422].includes(status) });
+  }
+  // The map service not answering (2026-11-24 on): the city and province of the nearest customer on
+  // this phone with a position, within 25 km, saved like a phone location.
+  function nearestCustomer(lat, lng) {
+    let best = null;
+    for (const c of App.data.cachedCustomers?.() || []) {
+      if (c.lat == null || c.lng == null || !c.city || !PROVINCES.some(([k]) => k === c.province)) continue;
+      const d = km({ lat, lng }, c);
+      if (d <= 25 && (!best || d < best.d)) best = { d, city: c.city, prov: c.province };
     }
+    return best;
+  }
+  async function saveNear({ city, prov }) {
+    try {
+      const { data } = await App.data.call(window.supabaseClient.rpc("tdg_save_location", { p_city: city, p_province: prov, p_source: "phone" }));
+      const row = Array.isArray(data) ? data[0] : data;
+      if (row) return { ...fromAccount(row, "phone"), near: true };
+    } catch (error) { console.warn("Location not saved on the account:", error.message); }
+    return { city, prov, src: "phone", at: new Date().toISOString(), how: "phone", near: true };
+  }
+
+  // The last lookup in this session, in memory only (positions are never saved, decision 10): the
+  // app checks the phone's position at every open, and only asks for the city again after moving
+  // 2 km or after 30 minutes.
+  let lastFix = null;
+  async function locateNow(fresh = false, reuse = false) {
+    const pos = await position(fresh);
+    const here = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    if (reuse && lastFix && lastFix.user === S().session.userId && Date.now() - lastFix.t < 30 * 60000 && km(lastFix, here) < 2) return lastFix.loc;
+    let loc;
+    try { loc = await lookup(here.lat, here.lng); } catch (error) {
+      const near = error.down && nearestCustomer(here.lat, here.lng);
+      if (!near) throw error;
+      console.warn("City not looked up; using the nearest customer's:", error.message);
+      loc = await saveNear(near);
+    }
+    lastFix = { ...here, t: Date.now(), user: S().session.userId, loc };
     device.set(`located:${S().session.userId}`, localDate());
-    return fromAccount(r.data.location, "phone");
+    return loc;
   }
 
   let locating = false;
@@ -78,10 +128,14 @@
     if (locating) return;
     locating = true;
     try {
-      setLoc(await locateNow(App.inApp));
+      const loc = await locateNow(App.inApp, true);
+      S().locError = "";
+      setLoc(loc);
     } catch (error) {
       console.warn("Phone location failed; using the last saved one:", error.message);
+      S().locError = error.message;
       if (S().loc?.src === "phone") setLoc({ ...S().loc, src: "last" });
+      else App.renderChrome();
     }
     locating = false;
   }
@@ -101,9 +155,10 @@
 
   function openProv(firstTime = false) {
     const l = S().loc || { src: "none" };
+    const why = S().locError ? ` ${S().locError}` : "";
     const how = {
-      phone: `From phone location${l.at ? ` at ${localTime(l.at)}` : ""}.`,
-      last: "Phone location unavailable. Using the last saved location.",
+      phone: `From phone location${l.at ? ` at ${localTime(l.at)}` : ""}.${l.near ? " The map service is not answering, so the city is the nearest customer's." : ""}`,
+      last: `Phone location unavailable.${why} Using the last saved location.`,
       manual: "Chosen by you. Lasts until the next location check.",
       account: l.how === "manual" ? "Chosen on this account." : `Last phone location on this account${l.at ? `, ${localDay(l.at)} ${localTime(l.at)}` : ""}.`,
       none: "No location saved on this account yet.",
@@ -123,6 +178,7 @@
     App.sheetBusy(true);
     try {
       setLoc(await locateNow(true));
+      S().locError = "";
       App.closeSheet(false);
       App.snackbar(`Located: ${S().loc.city ? S().loc.city + ", " : ""}${S().loc.prov}`);
     } catch (error) {

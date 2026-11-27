@@ -18,19 +18,21 @@
 
   // The unit in front of the street address is left out before looking up a position:
   // "160, 1225 St Mary's Road", "Unit 5, 12 Main St", "5-123 Main St" (3.8).
-  function stripUnit(addr) {
+  function stripFront(addr) {
     let a = String(addr || "").trim();
     a = a.replace(/^\s*(?:(?:unit|suite|ste|apt)\b|#)\s*[\w-]+\s*,?\s*/i, ""); // not the "Ste" of "Sterling"
     a = a.replace(/^\s*[\w-]{1,8}\s*,\s*(?=\d)/, "");
     a = a.replace(/^\s*\d+[a-z]?\s*-\s*(?=\d)/i, "");
     return a.trim();
   }
+  // ...and the unit at the end too ("1225 St Mary's Rd Unit 5", "11 Reenders Dr #70"), as tdg-route does.
+  const stripUnit = (addr) => stripFront(addr).replace(/\s+(?:(?:unit|suite|ste|apt)\b\.?|#)\s*[\w-]+\s*$/i, "").trim();
 
-  // Addresses compared without case, punctuation, units, "Saint"/"St" and street types, so
+  // Addresses compared without case, punctuation or units, with street types normalized, so
   // "1124 St Marys Road" and "1124 St. Mary's Rd" are the same and only real differences ask (3.2).
-  const WORDS = { saint: "st", street: "", st: "", road: "", rd: "", avenue: "", ave: "", av: "", boulevard: "", blvd: "", drive: "", dr: "",
-    crescent: "", cres: "", highway: "hwy", place: "", pl: "", lane: "", ln: "", court: "", ct: "", way: "", trail: "", trl: "", parkway: "", pkwy: "",
-    square: "", sq: "", circle: "", cir: "", terrace: "", ter: "",
+  const WORDS = { saint: "saint", street: "st", st: "st", road: "rd", rd: "rd", avenue: "ave", ave: "ave", av: "ave", boulevard: "blvd", blvd: "blvd", drive: "dr", dr: "dr",
+    crescent: "cres", cres: "cres", highway: "hwy", place: "pl", pl: "pl", lane: "ln", ln: "ln", court: "ct", ct: "ct", way: "way", trail: "trl", trl: "trl", parkway: "pkwy", pkwy: "pkwy",
+    square: "sq", sq: "sq", circle: "cir", cir: "cir", terrace: "ter", ter: "ter",
     east: "e", west: "w", north: "n", south: "s" };
   function normAddr(addr) {
     const words = stripUnit(addr).toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter(Boolean);
@@ -39,6 +41,16 @@
       .map((w) => (w in WORDS ? WORDS[w] : w)).filter(Boolean).join(" ");
   }
   const sameAddress = (a, b) => normAddr(a) === normAddr(b);
+  // How the first Route (before 1.1.0, and the website until it is updated) wrote an address for the
+  // remembered address choices (tdg_route_address_choices.list_address), so those choices still count.
+  const LEGACY_WORDS = { saint: "st", street: "", st: "", road: "", rd: "", avenue: "", ave: "", av: "", boulevard: "", blvd: "", drive: "", dr: "",
+    crescent: "", cres: "", highway: "hwy", place: "", pl: "", lane: "", ln: "", court: "", ct: "", way: "", trail: "", trl: "", parkway: "", pkwy: "",
+    square: "", sq: "", circle: "", cir: "", terrace: "", ter: "", east: "e", west: "w", north: "n", south: "s" };
+  function legacyNormAddr(addr) {
+    const words = stripFront(addr).toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter(Boolean);
+    return words.map((w, i) => (w === "st" && i > 0 && /^\d/.test(words[i - 1]) ? "saint" : w))
+      .map((w) => (w in LEGACY_WORDS ? LEGACY_WORDS[w] : w)).filter(Boolean).join(" ");
+  }
 
   // One list row from a sheet row: columns by name, in any order (3.2). CO2-CC 1/2 are not read.
   // The PDF list (3.2.1) calls them Cust. #, Customer, Address and City ("WINNIPEG, MB").
@@ -82,7 +94,7 @@
 
   // Two lists for the same week (one received, one the driver's own): each customer once (decision 34).
   function mergeLists(theirs, mine) {
-    const key = (r) => normAcc(r.pos) || `addr:${normAddr(r.addr)}`;
+    const key = (r) => normAcc(r.pos) || `addr:${normAddr(r.addr)}|${String(r.city || "").toLowerCase()}|${String(r.prov || "").toLowerCase()}`;
     const seen = new Set(theirs.map(key));
     const own = new Set(mine.map(key));
     return {
@@ -110,7 +122,9 @@
       if (!a || !b || a.lat == null || b.lat == null) return { s: 0, m: 0 };
       const ka = pointKey(a), kb = pointKey(b);
       if (ka === kb) return { s: 0, m: 0 };
-      return known[`${ka}>${kb}`] || estimate(a, b);
+      const value = known[`${ka}>${kb}`];
+      if (value?.unreachable) return { s: Infinity, m: Infinity, unreachable: true };
+      return value || { ...estimate(a, b), estimated: true };
     };
     return {
       get,
@@ -118,8 +132,10 @@
       // Results of one Matrix call: points in order, durations[i][j] seconds, distances[i][j] metres.
       add(points, durations, distances) {
         points.forEach((a, i) => points.forEach((b, j) => {
-          if (i === j || durations?.[i]?.[j] == null) return;
-          known[`${pointKey(a)}>${pointKey(b)}`] = { s: durations[i][j], m: distances?.[i]?.[j] ?? estimate(a, b).m };
+          if (i === j) return;
+          const s = durations?.[i]?.[j], m = distances?.[i]?.[j];
+          known[`${pointKey(a)}>${pointKey(b)}`] = Number.isFinite(s) && s >= 0 && Number.isFinite(m) && m >= 0
+            ? { s, m } : { s: Infinity, m: Infinity, unreachable: true };
         }));
       },
       has: (a, b) => `${pointKey(a)}>${pointKey(b)}` in known,
@@ -136,7 +152,8 @@
 
   // Shortest drive from start through every stop to end: nearest neighbour, then 2-opt and
   // or-opt (moving one to three stops) until nothing improves. Start and end stay put.
-  function orderStops(cost, start, stops, end) {
+  function orderStops(cost, start, stops, end, { until = Infinity } = {}) {
+    const late = () => Date.now() >= until;
     const located = stops.filter((s) => s.lat != null), unknown = stops.filter((s) => s.lat == null);
     const left = located.slice(), out = [];
     let cur = start;
@@ -147,10 +164,10 @@
       out.push(cur);
     }
     let best = pathCost(cost, start, out, end);
-    for (let round = 0, improved = true; improved && round < 50; round++) {
+    for (let round = 0, improved = true; improved && round < 50 && !late(); round++) {
       improved = false;
       for (let i = 0; i < out.length - 1; i++) {
-        for (let j = i + 1; j < out.length; j++) {
+        for (let j = i + 1; j < out.length && !late(); j++) {
           const cand = out.slice(0, i).concat(out.slice(i, j + 1).reverse(), out.slice(j + 1));
           const c = pathCost(cost, start, cand, end);
           if (c + 1e-6 < best) { out.splice(0, out.length, ...cand); best = c; improved = true; }
@@ -159,7 +176,7 @@
       for (let len = 1; len <= 3; len++) {
         for (let i = 0; i + len <= out.length; i++) {
           const seg = out.slice(i, i + len), rest = out.slice(0, i).concat(out.slice(i + len));
-          for (let k = 0; k <= rest.length; k++) {
+          for (let k = 0; k <= rest.length && !late(); k++) {
             if (k === i) continue;
             const cand = rest.slice(0, k).concat(seg, rest.slice(k));
             const c = pathCost(cost, start, cand, end);
@@ -180,7 +197,7 @@
     const m = /^(\d+)[a-z]?\s+(.+)$/.exec(normAddr(addr));
     return m ? { no: Number(m[1]), street: m[2] } : null;
   }
-  const sideKey = (s) => { const a = s.lat == null ? null : streetOf(s.addr); return a ? `${a.street}|${a.no % 2}` : null; };
+  const sideKey = (s) => { const a = s.lat == null ? null : streetOf(s.addr); return a ? `${String(s.city || "").toLowerCase()}|${String(s.prov || "").toLowerCase()}|${a.street}|${a.no % 2}` : null; };
   const unit = (members, free) => ({ members, first: members[0], last: members[members.length - 1], size: members.length, free,
     lat: members.reduce((t, s) => t + s.lat, 0) / members.length, lng: members.reduce((t, s) => t + s.lng, 0) / members.length });
 
@@ -193,8 +210,19 @@
     const by = new Map();
     stops.forEach((s, i) => { const k = sideKey(s) ?? i; by.set(k, (by.get(k) || []).concat(s)); });
     const units = [];
+    const runs = [];
     for (const list of by.values()) {
-      const run = list.sort((a, b) => streetOf(a.addr).no - streetOf(b.addr).no || 0);
+      const sorted = list.sort((a, b) => (streetOf(a.addr)?.no || 0) - (streetOf(b.addr)?.no || 0));
+      let run = [];
+      for (const s of sorted) {
+        const prev = run[run.length - 1], a = prev && curbOf(prev), b = curbOf(s);
+        const opposite = a != null && b != null && Math.abs(((a - b + 540) % 360) - 180) > 60;
+        if (prev && (estimate(prev, s).m > 1000 || estimate(run[0], s).m > 2000 || opposite)) { runs.push(run); run = []; }
+        run.push(s);
+      }
+      if (run.length) runs.push(run);
+    }
+    for (const run of runs) {
       const f = run[0], l = run[run.length - 1], dx = (l.lng - f.lng) * Math.cos(f.lat * RAD), dy = l.lat - f.lat;
       let vote = 0; // up the numbers (dx, dy) against each known bearing
       for (const s of run) { const b = curbOf(s); if (b != null) vote += Math.sign(dx * Math.sin(b * RAD) + dy * Math.cos(b * RAD)); }
@@ -219,9 +247,9 @@
   const expand = (units) => units.flatMap((u) => u.members);
 
   // One day's stops in the shortest order that keeps each same-side group together (decision 49).
-  function orderDay(cost, start, stops, end, curbOf) {
+  function orderDay(cost, start, stops, end, curbOf, options = {}) {
     const located = stops.filter((s) => s.lat != null), unknown = stops.filter((s) => s.lat == null);
-    return expand(flipFree(cost, start, orderStops(unitCost(cost), start, sideGroups(located, curbOf), end), end)).concat(unknown);
+    return expand(flipFree(cost, start, orderStops(unitCost(cost), start, sideGroups(located, curbOf), end, options), end)).concat(unknown);
   }
 
   // Stops split into `days` days of even size, near ones together, each same-side group on one day
@@ -229,14 +257,14 @@
   // every rotation tried; then groups moved or swapped between days while the total drive gets shorter.
   // `until` (a Date.now() time) stops the search with the best plan found so far, so a long list on a
   // slow phone still finishes (owner's choice 2026-10-28).
-  function splitDays(cost, start, end, stops, days, { curbOf, until = Infinity } = {}) {
-    if (days <= 1) return [orderDay(cost, start, stops, end, curbOf)];
+  function splitDays(cost, start, end, stops, days, { curbOf, until = Date.now() + 3000 } = {}) {
+    if (days <= 1) return [orderDay(cost, start, stops, end, curbOf, { until })];
     const late = () => Date.now() > until;
     const located = stops.filter((s) => s.lat != null), unknown = stops.filter((s) => s.lat == null);
     const sizes = evenSizes(located.length, days), lo = sizes[days - 1], hi = sizes[0], U = unitCost(cost);
     let units;
     const size = (g) => g.reduce((t, u) => t + u.size, 0);
-    const order = (g) => orderStops(U, start, g, end);
+    const order = (g) => orderStops(U, start, g, end, { until });
     // A day off the even sizes costs more than any drive, so the search puts that right first.
     const dayCost = (g) => (g.length ? pathCost(U, start, g, end) + g.reduce((t, u) => t + inner(cost, u), 0) : 0) + 1e7 * Math.max(0, lo - size(g), size(g) - hi);
     function sweep(c) {
@@ -301,9 +329,73 @@
       if (best.total < 1e7 || max === 1) break;
     }
     // Each day ordered again, so runs of one group that ended on the same day join up.
-    const groups = best.gs.map((g) => orderDay(cost, start, expand(g), end, curbOf));
+    const groups = best.gs.map((g) => orderDay(cost, start, expand(g), end, curbOf, { until }));
     // Stops without a position are shared out after the others, smallest day first.
     for (const s of unknown) groups.reduce((a, b) => (b.length < a.length ? b : a)).push(s);
+    return groups;
+  }
+
+  // Area-first planning when the full turn-aware service is unavailable. The matrix remains
+  // directed for route ordering; only the clustering uses mean outward/return road time.
+  function splitRegions(cost, start, end, stops, days, { curbOf, until = Infinity } = {}) {
+    if (!Number.isInteger(days) || days < 1 || days > 5) throw new Error("Choose one to five delivery days.");
+    const located = stops.filter((s) => s.lat != null), unknown = stops.filter((s) => s.lat == null);
+    if (days === 1) return [orderDay(cost, start, stops, end, curbOf, { until })];
+    const n = located.length, k = Math.min(days, n), average = n / days;
+    const lower = Math.floor(average * .8), upper = Math.ceil(average * 1.2);
+    const dist = located.map((a) => located.map((b) => (cost.s(a, b) + cost.s(b, a)) / 2));
+    const imbalance = (count) => 1800 * Math.max(0, average * 0.8 - count, count - average * 1.2) ** 2;
+    let best = null, bestScore = Infinity;
+    for (const seed of [...new Set([0, Math.floor(n / 3), Math.floor(n * 2 / 3)])]) {
+      if (!k || (best && Date.now() >= until)) break;
+      let centres = [seed];
+      while (centres.length < k) {
+        let next = -1, far = -1;
+        for (let i = 0; i < n; i++) if (!centres.includes(i)) {
+          const d = Math.min(...centres.map((c) => dist[i][c]));
+          if (next < 0 || d > far) { next = i; far = d; }
+        }
+        centres.push(next);
+      }
+      let groups;
+      for (let round = 0; round < 10; round++) {
+        groups = centres.map((c) => [c]);
+        // Place the most isolated customers first so a boundary stop does not displace them.
+        const rest = Array.from({ length: n }, (_, i) => i).filter((i) => !centres.includes(i));
+        rest.sort((a, b) => Math.min(...centres.map((c) => dist[b][c])) - Math.min(...centres.map((c) => dist[a][c])) || a - b);
+        for (const i of rest) {
+          let day = groups.findIndex((g) => g.length < upper), value = Infinity;
+          groups.forEach((g, d) => {
+            if (g.length >= upper) return;
+            const v = 4 * dist[i][centres[d]] + imbalance(g.length + 1) - imbalance(g.length);
+            if (v < value) { value = v; day = d; }
+          });
+          groups[day].push(i);
+        }
+        // Move only the least costly boundary stops needed to keep every selected day usable.
+        for (let d = 0; d < groups.length; d++) while (groups[d].length < lower) {
+          let move = null, delta = Infinity;
+          groups.forEach((g, from) => {
+            if (g.length <= lower || from === d) return;
+            g.forEach((i, at) => {
+              const cost = dist[i][centres[d]] - dist[i][centres[from]];
+              if (!move || cost < delta) { move = { from, at, i }; delta = cost; }
+            });
+          });
+          if (!move) break;
+          groups[move.from].splice(move.at, 1);
+          groups[d].push(move.i);
+        }
+        const next = groups.map((g) => g.reduce((a, b) => g.reduce((t, i) => t + dist[b][i], 0) < g.reduce((t, i) => t + dist[a][i], 0) ? b : a));
+        if (next.every((c, d) => c === centres[d]) || Date.now() >= until) break;
+        centres = next;
+      }
+      const score = groups.reduce((t, g, d) => t + imbalance(g.length) + g.reduce((s, i) => s + 4 * dist[i][centres[d]], 0), 0);
+      if (!best || score < bestScore) { best = groups; bestScore = score; }
+    }
+    const groups = (best || []).map((g) => orderDay(cost, start, g.map((i) => located[i]), end, curbOf, { until }));
+    while (groups.length < days) groups.push([]);
+    for (const s of unknown) groups.reduce((a, b) => b.length < a.length ? b : a).push(s);
     return groups;
   }
 
@@ -326,15 +418,16 @@
 
   // Each stop's drive from the one before, and the drive back to the end.
   function legs(cost, start, list, end) {
-    let prev = start, s = 0, m = 0;
+    let prev = start, s = 0, m = 0, estimated = false, unreachable = false;
     const rows = list.map((stop) => {
       const g = stop.lat == null ? { s: 0, m: 0 } : cost.get(prev, stop);
       if (stop.lat != null) prev = stop;
       s += g.s; m += g.m;
+      estimated ||= !!g.estimated || stop.lat == null; unreachable ||= !!g.unreachable;
       return { stop, s: g.s, m: g.m };
     });
     const back = end ? cost.get(prev, end) : { s: 0, m: 0 };
-    return { rows, back, s: s + back.s, m: m + back.m };
+    return { rows, back, s: s + back.s, m: m + back.m, estimated: estimated || !!back.estimated, unreachable: unreachable || !!back.unreachable };
   }
 
   // Points whose driving times are not known yet (one Matrix call covers them all).
@@ -350,8 +443,8 @@
     return [];
   }
 
-  const api = { normAcc, routeOf, stripUnit, normAddr, sameAddress, columnOf, splitCity, readList, mergeLists, estimate, pointKey, costTable, pathCost,
-    orderStops, evenSizes, streetOf, sideGroups, orderDay, splitDays, cheapestIndex, legs, missingPoints };
+  const api = { normAcc, routeOf, stripUnit, normAddr, sameAddress, legacyNormAddr, columnOf, splitCity, readList, mergeLists, estimate, pointKey, costTable, pathCost,
+    orderStops, evenSizes, streetOf, sideGroups, orderDay, splitDays, splitRegions, cheapestIndex, legs, missingPoints };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.TDG_ROUTE_PLAN = api;
 })(typeof window !== "undefined" ? window : globalThis);

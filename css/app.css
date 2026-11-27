@@ -404,6 +404,8 @@ button { cursor: pointer; }
 .sheet-f { flex: none; display: flex; gap: 10px; padding: 12px 16px calc(14px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line); }
 .sheet-f .btn { flex: 1; }
 .note-box { background: var(--brand-soft); color: var(--text); border-radius: 12px; padding: 12px; font-size: 14px; margin-bottom: 14px; }
+.note-box.warn { background: var(--warn-soft); display: flex; gap: 8px; align-items: flex-start; }
+.note-box.warn svg { color: var(--warn); flex: none; margin-top: 2px; }
 .steps { background: var(--surface-2); border-radius: 12px; padding: 12px 14px; font-size: 14px; }
 .steps ol { margin: 6px 0 0; padding-left: 20px; }
 .steps li { margin: 3px 0; }
@@ -502,6 +504,10 @@ button { cursor: pointer; }
 }
 .num-badge.sm { width: 24px; height: 24px; font-size: 12px; }
 .stop.done .num-badge, .mini-stop.done .num-badge { background: var(--ok-soft); color: var(--ok); }
+.stop-item { display: flex; flex-direction: column; gap: 4px; }
+[data-drag] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.stop-item.lifted .stop, .mini-stop.lifted { position: relative; z-index: 2; background: var(--surface); box-shadow: 0 8px 24px rgba(0, 0, 0, .22); border-color: var(--brand); }
+.mini-stop.lifted { border-radius: 10px; padding-left: 6px; }
 .leg { font-size: 12px; color: var(--muted); padding: 1px 0 1px 26px; font-variant-numeric: tabular-nums; }
 .ordbtns { display: flex; flex-direction: column; gap: 4px; flex: none; }
 .ordbtns button { width: 36px; height: 30px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--surface-2); display: grid; place-items: center; }
@@ -620,3 +626,29 @@ body { background: var(--page); }
 .plan-busy .spin { width: 20px; height: 20px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--brand); animation: plan-spin 0.8s linear infinite; }
 @keyframes plan-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .plan-busy .spin { animation: none; } }
+
+/* ---------- guides: what to fill in or press next (owner 2026-11-14, mockups/checkin-guide.html) ----------
+   Light green marks the next thing to fill in, and the button to press next glows. The Today
+   Check-in button glows too: it only exists while not checked in (js/app/screens.js).
+   CSS only (:has needs WebView 105+); an older WebView simply shows no guide.
+   App only: html.web is the website, which shares this file and these sheets.
+   Check-in and Switch vehicle: the first empty KM box, then the product, then the confirm button.
+   Add Delivery: customer -> Confirm Arrive -> Delivered lbs -> Add Record. #fName carries
+   placeholder=" " so CSS can tell an empty Account Name; confirmArrive() writes <b>Arrived …</b>
+   into #arriveText. */
+html:not(.web) .sheet:has(:is(#ciKm, #swEnd)) .field:not(.field:has(.input:placeholder-shown) ~ .field) > .input:placeholder-shown,
+html:not(.web) .sheet:has(#fName:placeholder-shown) #custSearch,
+html:not(.web) .sheet:has(#fName:not(:placeholder-shown)):has(#arriveText b) #fLbs:placeholder-shown { background: var(--ok-soft); }
+html:not(.web) .sheet:has(:is(#ciKm, #swEnd)):not(:has(.input:placeholder-shown)) [role=radiogroup]:not(:has(:checked)) {
+  background: var(--ok-soft); box-shadow: 0 0 0 8px var(--ok-soft); border-radius: 6px; /* the shadow widens the green without moving anything */
+}
+.btn-ok { --glow: var(--ok); }
+html:not(.web) [data-action=checkin],
+html:not(.web) .sheet:has(#fName:not(:placeholder-shown)):not(:has(#arriveText b)) #btnArrive,
+html:not(.web) .sheet:has(#fName:not(:placeholder-shown)):has(#arriveText b):has(#fLbs:not(:placeholder-shown)) [data-action=confirmAdd]:enabled,
+html:not(.web) .sheet:has(:is(#ciKm, #swEnd)):not(:has(.input:placeholder-shown)):is(:has([name=product]:checked), :not(:has([name=product]))) .sheet-f .btn:last-child:enabled {
+  box-shadow: 0 0 18px 4px var(--glow, var(--brand));
+  animation: btn-glow 0.8s ease-in-out infinite alternate;
+}
+@keyframes btn-glow { from { box-shadow: 0 0 3px 0 var(--glow, var(--brand)); } }
+@media (prefers-reduced-motion: reduce) { @keyframes btn-glow { } } /* a steady glow instead of a pulse */

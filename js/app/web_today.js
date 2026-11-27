@@ -158,7 +158,7 @@
       ${next.length ? `<h3 class="w-h3">Next</h3>${next.map((r) => `<div class="w-line"><span class="w-n">${L.rows.indexOf(r) + 1}</span><span class="w-what">${esc(r.stop.name)}<small>${esc(r.stop.addr || "")}</small></span><span class="w-leg num">${RT.fmtKm(r.m)} km<small>${Math.max(1, Math.round(r.s / 60))} min</small></span></div>`).join("")}`
         : `<p class="w-note">All of today's stops are delivered.</p>`}
       <div class="w-foot w-two">${pend[0] ? `<button class="btn btn-outline" data-action="navigate" data-id="${esc(pend[0].stop.id)}">${icon("nav", 16)} Navigate</button><button class="btn btn-outline" data-action="startStop" data-id="${esc(pend[0].stop.id)}" ${out ? "disabled" : ""}>Start delivery</button>` : ""}
-        <button class="btn btn-outline" data-action="openRouteToday">Today's list</button><button class="btn btn-outline w-danger" data-action="deleteRoute" ${pend[0] ? "" : "disabled"}>${icon("trash", 16)} Delete Route</button></div>`,
+        <button class="btn btn-outline" data-action="openRouteToday">Today's list</button><button class="btn btn-outline w-danger" data-action="openDelete" data-owner="me" data-date="${day}" ${pend[0] ? "" : "disabled"}>${icon("trash", 16)} Delete Route</button></div>`,
       { span: 4, cls: "col", tools: `<button class="w-link" data-action="webGo" data-screen="route">Open</button>` });
   }
 

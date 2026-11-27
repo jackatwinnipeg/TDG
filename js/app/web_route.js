@@ -33,7 +33,8 @@
     const right = `<button class="btn btn-outline" data-action="emergency">${icon("siren", 16)} Emergency call</button>
       <button class="btn btn-outline" data-action="replan" data-owner="me">${icon("update", 16)} Re-plan</button>
       ${RT().canChangeDay(plan, d) ? RT().changeDayBtn(d, "me") : ""}
-      ${d === day && RT().pendingOn(plan, d).length > 1 ? `<button class="btn ${editing ? "btn-primary" : "btn-outline"}" data-action="editOrder" data-owner="me">${editing ? "Save order" : "Change order"}</button>` : ""}
+      ${d >= day && RT().pendingOn(plan, d).length > 1 ? `<button class="btn ${editing ? "btn-primary" : "btn-outline"}" data-action="editOrder" data-owner="me">${editing ? "Save order" : "Change order"}</button>` : ""}
+      ${RT().deleteBtn(plan, d, "me", "btn btn-outline")}
       ${upload}`;
     return `
       ${W.title("Route", `Week of ${plan.dates[0]} · ${fmtN(stops)} stops over ${plan.dates.length} day${plan.dates.length === 1 ? "" : "s"} · ${RT().fmtKm(kmAll)} km planned`, right)}

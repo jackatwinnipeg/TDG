@@ -569,7 +569,7 @@
           <div class="field"><label class="label" for="fAcc">Account Number</label><input class="input" id="fAcc" autocomplete="off"></div>
           <div class="field"><label class="label" for="fRoute">Route</label><input class="input" id="fRoute" autocomplete="off"></div>
         </div>
-        <div class="field"><label class="label" for="fName">Account Name *</label><input class="input" id="fName" autocomplete="off"></div>
+        <div class="field"><label class="label" for="fName">Account Name *</label><input class="input" id="fName" autocomplete="off" placeholder=" "></div>
         <div class="field"><label class="label" for="fAddr">Address</label><input class="input" id="fAddr" autocomplete="off"></div>
         <div class="field"><label class="label" for="fCity">City</label><input class="input" id="fCity" autocomplete="off"></div>
         <div class="divider"></div>
